@@ -1,0 +1,73 @@
+[package]
+name = "ubc"
+description = "Micro main-board control service."
+version = "0.1.0"
+license = "MIT"
+authors = ["K <kayo@illumium.org>"]
+readme = "README.md"
+categories = []
+keywords = ["main", "board", "control", "gpio", "bmc"]
+homepage = "https://github.com/katyo/ubc"
+repository = "https://github.com/katyo/ubc"
+edition = "2021"
+
+[dependencies.anyhow]
+version = "1"
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[dependencies.toml]
+version = "0.5"
+
+[dependencies.clap]
+version = "3"
+features = ["derive"]
+
+[dependencies.log]
+version = "0.4"
+features = ["max_level_trace", "release_max_level_off"]
+
+[dependencies.lovely_env_logger]
+version = "0.5"
+optional = true
+
+[dependencies.slab]
+version = "0.4"
+
+[dependencies.tokio]
+version = "1"
+features = ["macros", "rt-multi-thread"]
+
+#[dependencies.async-broadcast]
+#version = "0.4"
+
+[dependencies.async-trait]
+version = "0.1"
+
+[dependencies.dbus-async]
+version = "2.3"
+optional = true
+
+[dependencies.dbus-message-parser]
+version = "4.3"
+optional = true
+
+[dependencies.warp]
+version = "0.3"
+default-features = false
+features = []
+optional = true
+
+[dependencies.gpiod]
+git = "https://github.com/katyo/libgpiod-rs"
+package = "tokio-gpiod"
+version = "0.2"
+features = ["serde"]
+
+[features]
+default = ["http"]
+#default = ["dbus", "http"]
+dbus = ["dbus-message-parser", "dbus-async"]
+http = ["warp"]
