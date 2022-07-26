@@ -1,5 +1,6 @@
 use crate::Result;
 use gpiod::{Active, Bias, Chip, Drive, LineId, Lines, Options, Output};
+use parse_display::{Display, FromStr};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::{
@@ -48,7 +49,7 @@ const fn default_delay() -> u32 {
 
 impl Button {
     /// Instantiate new button
-    pub async fn new(config: &ButtonConfig) -> Result<Self> {
+    pub async fn new(type_: ButtonType, config: &ButtonConfig) -> Result<Self> {
         let state = ButtonState {
             outputs: RwLock::new(
                 Chip::new(&config.chip)
@@ -57,7 +58,8 @@ impl Button {
                         Options::output(&[config.line])
                             .active(config.active)
                             .bias(config.bias)
-                            .drive(config.drive),
+                            .drive(config.drive)
+                            .consumer(format!("{}-{}-button", env!("CARGO_PKG_NAME"), type_)),
                     )
                     .await?,
             ),
@@ -78,8 +80,22 @@ impl Button {
 }
 
 /// Button type
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    FromStr,
+    Display,
+)]
 #[serde(rename_all = "kebab-case")]
+#[display(style = "kebab-case")]
 pub enum ButtonType {
     /// System power button
     Power,
@@ -111,15 +127,20 @@ impl Buttons {
         let mut buttons = HashMap::default();
 
         for (type_, config) in &config.buttons {
-            buttons.insert(*type_, Button::new(config).await?);
+            buttons.insert(*type_, Button::new(*type_, config).await?);
         }
 
         Ok(Self { buttons })
     }
 
+    /// Get present buttons
+    pub fn list<'a>(&'a self) -> impl Iterator<Item = ButtonType> + 'a {
+        self.buttons.keys().copied()
+    }
+
     /// Simulate button press
-    pub async fn press(&mut self, type_: ButtonType) -> Result<bool> {
-        Ok(if let Some(button) = self.buttons.get_mut(&type_) {
+    pub async fn press(&self, type_: ButtonType) -> Result<bool> {
+        Ok(if let Some(button) = self.buttons.get(&type_) {
             button.press().await?;
             true
         } else {

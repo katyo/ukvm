@@ -18,7 +18,13 @@ version = "1"
 version = "1"
 features = ["derive"]
 
+[dependencies.serde_json]
+version = "1"
+
 [dependencies.toml]
+version = "0.5"
+
+[dependencies.parse-display]
 version = "0.5"
 
 [dependencies.clap]
@@ -33,12 +39,23 @@ features = ["max_level_trace", "release_max_level_off"]
 version = "0.5"
 optional = true
 
+[dependencies.systemd-journal-logger]
+version = "0.5"
+optional = true
+
 [dependencies.slab]
 version = "0.4"
 
+[dependencies.futures]
+version = "0.3"
+
 [dependencies.tokio]
 version = "1"
-features = ["macros", "rt-multi-thread"]
+features = ["macros", "rt-multi-thread", "signal"]
+
+[dependencies.tokio-stream]
+version = "0.1"
+features = ["net", "sync"]
 
 #[dependencies.async-broadcast]
 #version = "0.4"
@@ -67,7 +84,8 @@ version = "0.2"
 features = ["serde"]
 
 [features]
-default = ["http"]
-#default = ["dbus", "http"]
+default = ["http", "dbus", "logs"]
 dbus = ["dbus-message-parser", "dbus-async"]
 http = ["warp"]
+logs = ["lovely_env_logger"]
+logs2 = ["systemd-journal-logger"]

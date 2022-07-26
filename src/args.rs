@@ -1,29 +1,124 @@
+use crate::{Error, Result};
 use std::{
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
+    str::FromStr,
 };
+
+#[cfg(feature = "http")]
+use crate::HttpBind;
+
+#[cfg(feature = "dbus")]
+use crate::DBusBind;
 
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about)]
 pub struct Args {
-    #[cfg(feature = "dbus")]
-    /// Run DBus system service
+    /// Run server
     #[clap(short, long)]
-    pub dbus: bool,
+    pub run: bool,
 
-    /// HTTP host to bind to
-    #[clap(short, long, value_parser, default_value_t = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))]
-    pub tcp: IpAddr,
-
-    /// HTTP port to bind to
-    #[clap(short, long, value_parser, default_value_t = 8080)]
-    pub port: u16,
-
-    /// HTTP unix socket to bind to
+    #[cfg(any(feature = "http", feature = "dbus"))]
+    /// Service bindings
     #[clap(short, long, value_parser)]
-    pub unix: Option<PathBuf>,
+    pub bind: Vec<Bind>,
 
     /// Config file path
     #[clap(short, long, value_parser, default_value = "/etc/ubc.toml")]
     pub config: PathBuf,
+}
+
+#[cfg(any(feature = "http", feature = "dbus"))]
+/// Service binding
+#[derive(Debug, Clone)]
+pub enum Bind {
+    #[cfg(feature = "http")]
+    /// HTTP server
+    ///
+    /// http://addr[:port]
+    /// http+unix://path
+    Http(HttpBind),
+
+    #[cfg(feature = "dbus")]
+    /// DBus service
+    ///
+    /// dbus://system
+    /// dbus+tcp://addr[:port]
+    /// dbus+unix://path
+    DBus(DBusBind),
+}
+
+impl FromStr for Bind {
+    type Err = Error;
+
+    fn from_str(uri: &str) -> Result<Self> {
+        let (proto, bind) = uri
+            .split_once("://")
+            .ok_or_else(|| anyhow::anyhow!("The <protocol>://<resource> expected"))?;
+
+        if let Some((proto, sub_proto)) = proto.split_once('+') {
+            #[cfg(feature = "http")]
+            if proto == "http" {
+                return if sub_proto == "unix" {
+                    Ok(Bind::Http(HttpBind::Path(bind.into())))
+                } else {
+                    http_addr(bind)
+                };
+            }
+
+            #[cfg(feature = "dbus")]
+            if proto == "dbus" {
+                return if sub_proto == "unix" {
+                    Ok(Bind::DBus(DBusBind::Path(bind.into())))
+                } else if sub_proto == "tcp" {
+                    dbus_addr(bind)
+                } else {
+                    dbus_bus(bind)
+                };
+            }
+        } else {
+            #[cfg(feature = "http")]
+            if proto == "http" {
+                return http_addr(bind);
+            }
+
+            #[cfg(feature = "dbus")]
+            if proto == "dbus" {
+                return dbus_bus(bind);
+            }
+        }
+
+        anyhow::bail!("Invalid binding URI: {}", uri);
+
+        fn socket_addr(bind: &str, default_port: u16) -> Result<SocketAddr> {
+            let (addr, port) = if let Some((addr, port)) = bind.split_once(':') {
+                (addr, port.parse()?)
+            } else {
+                (bind, default_port)
+            };
+
+            let addr = addr.parse::<IpAddr>()?;
+
+            Ok((addr, port).into())
+        }
+
+        #[cfg(feature = "http")]
+        fn http_addr(bind: &str) -> Result<Bind> {
+            socket_addr(bind, 8080).map(|addr| Bind::Http(HttpBind::Addr(addr)))
+        }
+
+        #[cfg(feature = "dbus")]
+        fn dbus_addr(bind: &str) -> Result<Bind> {
+            socket_addr(bind, 6667).map(|addr| Bind::DBus(DBusBind::Addr(addr)))
+        }
+
+        #[cfg(feature = "dbus")]
+        fn dbus_bus(bind: &str) -> Result<Bind> {
+            Ok(Bind::DBus(match bind {
+                "system" => DBusBind::System,
+                "session" => DBusBind::Session,
+                _ => anyhow::bail!("Unknown DBus bus: {}", bind),
+            }))
+        }
+    }
 }

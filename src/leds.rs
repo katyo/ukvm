@@ -1,5 +1,6 @@
 use crate::Result;
 use gpiod::{Active, Bias, Chip, Edge, EdgeDetect, LineId, Options};
+use parse_display::{Display, FromStr};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
 use std::{
@@ -42,7 +43,7 @@ pub struct LedConfig {
 }
 
 impl Led {
-    pub async fn new(config: &LedConfig) -> Result<Self> {
+    pub async fn new(type_: LedType, config: &LedConfig) -> Result<Self> {
         let (subscriber, mut subscriptions) = mpsc::channel(8);
         let mut inputs = Chip::new(&config.chip)
             .await?
@@ -50,7 +51,8 @@ impl Led {
                 Options::input(&[config.line])
                     .active(config.active)
                     .bias(config.bias)
-                    .edge(EdgeDetect::Both),
+                    .edge(EdgeDetect::Both)
+                    .consumer(format!("{}-{}-led", env!("CARGO_PKG_NAME"), type_)),
             )
             .await?;
 
@@ -68,6 +70,18 @@ impl Led {
 
                 loop {
                     select! {
+                        action = subscriptions.recv() => match action {
+                            // New listener received
+                            Some(listener) => {
+                                log::debug!("Add listener");
+                                listeners.insert(listener);
+                            }
+                            // Led object dropped
+                            None => {
+                                log::debug!("Finalize receiving events");
+                                break;
+                            }
+                        },
                         result = inputs.read_event() => match result {
                             // Edge event received
                             Ok(event) => {
@@ -78,22 +92,14 @@ impl Led {
                                     false
                                 };
                                 state.status.store(status, Ordering::Relaxed);
+                                // Send current status to all listeners
+                                for (_, listener) in &listeners {
+                                    let _ = listener.send(status);
+                                }
                             }
                             // Input error happenned
                             Err(error) => {
                                 log::error!("Error when receiving event: {}", error);
-                                break;
-                            }
-                        },
-                        action = subscriptions.recv() => match action {
-                            // New listener received
-                            Some(listener) => {
-                                log::debug!("Add listener");
-                                listeners.insert(listener);
-                            }
-                            // Led object dropped
-                            None => {
-                                log::debug!("Finalize receiving events");
                                 break;
                             }
                         },
@@ -139,8 +145,22 @@ pub struct LedsConfig {
 }
 
 /// LED type
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Deserialize,
+    Serialize,
+    FromStr,
+    Display,
+)]
 #[serde(rename_all = "kebab-case")]
+#[display(style = "kebab-case")]
 pub enum LedType {
     /// Power status LED
     Power,
@@ -164,10 +184,15 @@ impl Leds {
         let mut leds = HashMap::default();
 
         for (type_, config) in &config.leds {
-            leds.insert(*type_, Led::new(config).await?);
+            leds.insert(*type_, Led::new(*type_, config).await?);
         }
 
         Ok(Self { leds })
+    }
+
+    /// Get present LEDs
+    pub fn list<'a>(&'a self) -> impl Iterator<Item = LedType> + 'a {
+        self.leds.keys().copied()
     }
 
     /// Get current status of specified LED

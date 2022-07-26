@@ -1,0 +1,15 @@
+[buttons.power]
+chip = "gpiochip0"
+line = 23
+
+[buttons.reset]
+chip = "gpiochip0"
+line = 24
+
+[leds.power]
+chip = "gpiochip0"
+line = 22
+
+[leds.disk]
+chip = "gpiochip0"
+line = 27
