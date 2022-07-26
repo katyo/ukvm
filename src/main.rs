@@ -1,6 +1,7 @@
 mod args;
 mod buttons;
 mod leds;
+mod result;
 mod server;
 
 #[cfg(feature = "http")]
@@ -10,9 +11,9 @@ mod http;
 mod dbus;
 
 pub use args::{Args, Bind};
-pub use buttons::{ButtonType, Buttons, ButtonsConfig};
-pub use leds::{LedType, Leds, LedsConfig};
-pub use server::{Server, ServerConfig};
+pub use buttons::{ButtonId, Buttons, ButtonsConfig};
+pub use leds::{LedId, Leds, LedsConfig};
+pub use server::{Server, ServerConfig, ServerEvent};
 
 #[cfg(feature = "http")]
 pub use http::HttpBind;
@@ -20,7 +21,7 @@ pub use http::HttpBind;
 #[cfg(feature = "dbus")]
 pub use dbus::DBusBind;
 
-pub use anyhow::{Error, Result};
+pub use result::{Error, Result};
 
 use std::sync::Arc;
 use tokio::{
@@ -30,7 +31,7 @@ use tokio::{
 };
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     #[cfg(feature = "lovely_env_logger")]
     lovely_env_logger::init_default();
 
@@ -58,24 +59,24 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
 
+        let mut spawns: u32 = 0;
+        let stop = Arc::new(Semaphore::new(0));
+
         // create server instance
         let server = Server::new(&config).await?;
 
-        let stop = Arc::new(Semaphore::new(0));
-        let mut interfaces: u32 = 0;
-
         // start server interfaces
-        for bind in &args.bind {
+        for bind in args.bind.iter().chain(&config.binds) {
             match bind {
                 #[cfg(feature = "http")]
                 Bind::Http(bind) => {
-                    interfaces += 1;
+                    spawns += 1;
                     server.spawn_http(bind, &stop).await?;
                 }
 
                 #[cfg(feature = "dbus")]
                 Bind::DBus(bind) => {
-                    interfaces += 1;
+                    spawns += 1;
                     server.spawn_dbus(bind, &stop).await?;
                 }
             }
@@ -99,10 +100,10 @@ async fn main() -> anyhow::Result<()> {
         }
 
         // stop server interfaces
-        stop.add_permits(interfaces as _);
+        stop.add_permits(spawns as _);
 
         // await while interfaces stop
-        let _ = stop.acquire_many(interfaces).await;
+        let _ = stop.acquire_many(spawns).await;
     }
 
     log::info!("Bye");

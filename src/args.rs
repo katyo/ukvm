@@ -1,4 +1,5 @@
 use crate::{Error, Result};
+use serde::{Deserialize, Serialize};
 use std::{
     net::{IpAddr, SocketAddr},
     path::PathBuf,
@@ -30,7 +31,8 @@ pub struct Args {
 
 #[cfg(any(feature = "http", feature = "dbus"))]
 /// Service binding
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "proto", rename_all = "lowercase")]
 pub enum Bind {
     #[cfg(feature = "http")]
     /// HTTP server
@@ -54,7 +56,7 @@ impl FromStr for Bind {
     fn from_str(uri: &str) -> Result<Self> {
         let (proto, bind) = uri
             .split_once("://")
-            .ok_or_else(|| anyhow::anyhow!("The <protocol>://<resource> expected"))?;
+            .ok_or_else(|| "The <protocol>://<resource> expected")?;
 
         if let Some((proto, sub_proto)) = proto.split_once('+') {
             #[cfg(feature = "http")]
@@ -88,37 +90,37 @@ impl FromStr for Bind {
             }
         }
 
-        anyhow::bail!("Invalid binding URI: {}", uri);
-
-        fn socket_addr(bind: &str, default_port: u16) -> Result<SocketAddr> {
-            let (addr, port) = if let Some((addr, port)) = bind.split_once(':') {
-                (addr, port.parse()?)
-            } else {
-                (bind, default_port)
-            };
-
-            let addr = addr.parse::<IpAddr>()?;
-
-            Ok((addr, port).into())
-        }
-
-        #[cfg(feature = "http")]
-        fn http_addr(bind: &str) -> Result<Bind> {
-            socket_addr(bind, 8080).map(|addr| Bind::Http(HttpBind::Addr(addr)))
-        }
-
-        #[cfg(feature = "dbus")]
-        fn dbus_addr(bind: &str) -> Result<Bind> {
-            socket_addr(bind, 6667).map(|addr| Bind::DBus(DBusBind::Addr(addr)))
-        }
-
-        #[cfg(feature = "dbus")]
-        fn dbus_bus(bind: &str) -> Result<Bind> {
-            Ok(Bind::DBus(match bind {
-                "system" => DBusBind::System,
-                "session" => DBusBind::Session,
-                _ => anyhow::bail!("Unknown DBus bus: {}", bind),
-            }))
-        }
+        Err(Error::from(format!("Invalid binding URI: {}", uri)))
     }
+}
+
+fn socket_addr(bind: &str, default_port: u16) -> Result<SocketAddr> {
+    let (addr, port) = if let Some((addr, port)) = bind.split_once(':') {
+        (addr, port.parse()?)
+    } else {
+        (bind, default_port)
+    };
+
+    let addr = addr.parse::<IpAddr>()?;
+
+    Ok((addr, port).into())
+}
+
+#[cfg(feature = "http")]
+fn http_addr(bind: &str) -> Result<Bind> {
+    socket_addr(bind, 8080).map(|addr| Bind::Http(HttpBind::Addr(addr)))
+}
+
+#[cfg(feature = "dbus")]
+fn dbus_addr(bind: &str) -> Result<Bind> {
+    socket_addr(bind, 6667).map(|addr| Bind::DBus(DBusBind::Addr(addr)))
+}
+
+#[cfg(feature = "dbus")]
+fn dbus_bus(bind: &str) -> Result<Bind> {
+    Ok(Bind::DBus(match bind {
+        "system" => DBusBind::System,
+        "session" => DBusBind::Session,
+        _ => return Err(Error::from(format!("Unknown DBus bus: {}", bind))),
+    }))
 }

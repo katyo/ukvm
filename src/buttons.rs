@@ -7,6 +7,8 @@ use tokio::{
     sync::RwLock,
     time::{sleep, Duration},
 };
+#[cfg(feature = "zbus")]
+use zbus::zvariant::{OwnedValue, Type, Value};
 
 struct ButtonState {
     outputs: RwLock<Lines<Output>>,
@@ -49,7 +51,7 @@ const fn default_delay() -> u32 {
 
 impl Button {
     /// Instantiate new button
-    pub async fn new(type_: ButtonType, config: &ButtonConfig) -> Result<Self> {
+    pub async fn new(id: ButtonId, config: &ButtonConfig) -> Result<Self> {
         let state = ButtonState {
             outputs: RwLock::new(
                 Chip::new(&config.chip)
@@ -59,7 +61,7 @@ impl Button {
                             .active(config.active)
                             .bias(config.bias)
                             .drive(config.drive)
-                            .consumer(format!("{}-{}-button", env!("CARGO_PKG_NAME"), type_)),
+                            .consumer(format!("{}-{}-button", env!("CARGO_PKG_NAME"), id)),
                     )
                     .await?,
             ),
@@ -94,23 +96,25 @@ impl Button {
     FromStr,
     Display,
 )]
+#[cfg_attr(feature = "zbus", derive(Type, Value, OwnedValue))]
+#[cfg_attr(feature = "zbus", zvariant(signature = "s"))]
 #[serde(rename_all = "kebab-case")]
 #[display(style = "kebab-case")]
-pub enum ButtonType {
+pub enum ButtonId {
     /// System power button
-    Power,
+    Power = 1,
 
     /// System reset button
-    Reset,
+    Reset = 2,
 
     /// Clear CMOS button
-    Clear,
+    Clear = 3,
 }
 
 /// Buttons control service
 pub struct Buttons {
     /// Buttons
-    buttons: HashMap<ButtonType, Button>,
+    buttons: HashMap<ButtonId, Button>,
 }
 
 /// Buttons configuration
@@ -118,7 +122,7 @@ pub struct Buttons {
 #[serde(transparent)]
 pub struct ButtonsConfig {
     /// Button configurations
-    pub buttons: HashMap<ButtonType, ButtonConfig>,
+    pub buttons: HashMap<ButtonId, ButtonConfig>,
 }
 
 impl Buttons {
@@ -126,21 +130,21 @@ impl Buttons {
     pub async fn new(config: &ButtonsConfig) -> Result<Self> {
         let mut buttons = HashMap::default();
 
-        for (type_, config) in &config.buttons {
-            buttons.insert(*type_, Button::new(*type_, config).await?);
+        for (id, config) in &config.buttons {
+            buttons.insert(*id, Button::new(*id, config).await?);
         }
 
         Ok(Self { buttons })
     }
 
     /// Get present buttons
-    pub fn list<'a>(&'a self) -> impl Iterator<Item = ButtonType> + 'a {
+    pub fn list<'a>(&'a self) -> impl Iterator<Item = ButtonId> + 'a {
         self.buttons.keys().copied()
     }
 
     /// Simulate button press
-    pub async fn press(&self, type_: ButtonType) -> Result<bool> {
-        Ok(if let Some(button) = self.buttons.get(&type_) {
+    pub async fn press(&self, id: ButtonId) -> Result<bool> {
+        Ok(if let Some(button) = self.buttons.get(&id) {
             button.press().await?;
             true
         } else {

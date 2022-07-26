@@ -14,6 +14,8 @@ use tokio::{
     select, spawn,
     sync::{mpsc, watch},
 };
+#[cfg(feature = "zbus")]
+use zbus::zvariant::{OwnedValue, Type, Value};
 
 struct LedState {
     status: AtomicBool,
@@ -43,7 +45,7 @@ pub struct LedConfig {
 }
 
 impl Led {
-    pub async fn new(type_: LedType, config: &LedConfig) -> Result<Self> {
+    pub async fn new(id: LedId, config: &LedConfig) -> Result<Self> {
         let (subscriber, mut subscriptions) = mpsc::channel(8);
         let mut inputs = Chip::new(&config.chip)
             .await?
@@ -52,7 +54,7 @@ impl Led {
                     .active(config.active)
                     .bias(config.bias)
                     .edge(EdgeDetect::Both)
-                    .consumer(format!("{}-{}-led", env!("CARGO_PKG_NAME"), type_)),
+                    .consumer(format!("{}-{}-led", env!("CARGO_PKG_NAME"), id)),
             )
             .await?;
 
@@ -94,6 +96,9 @@ impl Led {
                                 state.status.store(status, Ordering::Relaxed);
                                 // Send current status to all listeners
                                 for (_, listener) in &listeners {
+                                    if listener.is_closed() {
+                                        continue;
+                                    }
                                     let _ = listener.send(status);
                                 }
                             }
@@ -141,7 +146,7 @@ impl Led {
 #[serde(transparent)]
 pub struct LedsConfig {
     /// LED configurations
-    pub leds: HashMap<LedType, LedConfig>,
+    pub leds: HashMap<LedId, LedConfig>,
 }
 
 /// LED type
@@ -159,23 +164,25 @@ pub struct LedsConfig {
     FromStr,
     Display,
 )]
+#[cfg_attr(feature = "zbus", derive(Type, Value, OwnedValue))]
+#[cfg_attr(feature = "zbus", zvariant(signature = "s"))]
 #[serde(rename_all = "kebab-case")]
 #[display(style = "kebab-case")]
-pub enum LedType {
+pub enum LedId {
     /// Power status LED
-    Power,
+    Power = 1,
 
     /// Disk usage LED
-    Disk,
+    Disk = 2,
 
     /// Ethernet usage LED
-    Ether,
+    Ether = 3,
 }
 
 /// LEDs control service
 pub struct Leds {
     /// LEDs
-    leds: HashMap<LedType, Led>,
+    leds: HashMap<LedId, Led>,
 }
 
 impl Leds {
@@ -183,26 +190,26 @@ impl Leds {
     pub async fn new(config: &LedsConfig) -> Result<Self> {
         let mut leds = HashMap::default();
 
-        for (type_, config) in &config.leds {
-            leds.insert(*type_, Led::new(*type_, config).await?);
+        for (id, config) in &config.leds {
+            leds.insert(*id, Led::new(*id, config).await?);
         }
 
         Ok(Self { leds })
     }
 
     /// Get present LEDs
-    pub fn list<'a>(&'a self) -> impl Iterator<Item = LedType> + 'a {
+    pub fn list<'a>(&'a self) -> impl Iterator<Item = LedId> + 'a {
         self.leds.keys().copied()
     }
 
     /// Get current status of specified LED
-    pub fn status(&self, type_: LedType) -> Option<bool> {
-        self.leds.get(&type_).map(|led| led.status())
+    pub fn status(&self, id: LedId) -> Option<bool> {
+        self.leds.get(&id).map(|led| led.status())
     }
 
     /// Listen LEDs status
-    pub async fn listen(&self, type_: LedType) -> Result<Option<watch::Receiver<bool>>> {
-        Ok(if let Some(led) = self.leds.get(&type_) {
+    pub async fn listen(&self, id: LedId) -> Result<Option<watch::Receiver<bool>>> {
+        Ok(if let Some(led) = self.leds.get(&id) {
             Some(led.listen().await?)
         } else {
             None

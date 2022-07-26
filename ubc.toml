@@ -1,3 +1,14 @@
+[[binds]]
+proto = "http"
+#type = "tcp"
+#bind = "127.0.0.1"
+type = "unix"
+bind = "sock"
+
+[[binds]]
+proto = "dbus"
+type = "system"
+
 [buttons.power]
 chip = "gpiochip0"
 line = 23

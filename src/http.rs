@@ -1,26 +1,23 @@
-use crate::{ButtonType, Result, Server};
+use crate::{ButtonId, Error, LedId, Result, Server, ServerEvent};
+use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::{net::UnixListener, spawn, sync::Semaphore};
-use tokio_stream::wrappers::UnixListenerStream;
+use tokio_stream::{wrappers::UnixListenerStream, StreamExt};
 
 /// HTTP service binding
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "bind", rename_all = "lowercase")]
 pub enum HttpBind {
     /// Network socket
+    #[serde(rename = "tcp")]
     Addr(SocketAddr),
 
+    #[serde(rename = "unix")]
     /// Unix socket
     Path(PathBuf),
 }
 
-#[derive(Debug)]
-struct AnyhowReject(anyhow::Error);
-
-impl warp::reject::Reject for AnyhowReject {}
-
-pub(crate) fn anyhow_reject(error: impl Into<anyhow::Error>) -> warp::Rejection {
-    warp::reject::custom(AnyhowReject(error.into()))
-}
+impl warp::reject::Reject for Error {}
 
 const INDEX_HTML: &'static str = include_str!("index.html");
 
@@ -42,25 +39,74 @@ impl Server {
                 .body(INDEX_HTML)
         });
 
-        let get_capabilities = warp::path!("capabilities")
+        let capabilities = warp::path!("capabilities")
             .and(server.clone())
             .map(|server: Server| warp::reply::json(&server.capabilities()));
 
-        let post_button_press = warp::path("buttons")
-            .and(warp::path::param())
+        let buttons = warp::path("buttons");
+        let button = buttons.and(warp::path::param::<ButtonId>());
+
+        let buttons_list = buttons
+            .and(warp::path::end())
             .and(server.clone())
-            .and_then(|button: ButtonType, server: Server| async move {
-                server
-                    .button_press(button)
-                    .await
-                    .map(|_| "")
-                    .map_err(anyhow_reject)
+            .map(|server: Server| warp::reply::json(&server.buttons().collect::<Vec<_>>()));
+
+        let button_press = button
+            .and(warp::path("press"))
+            .and(warp::path::end())
+            .and(server.clone())
+            .and_then(|id: ButtonId, server: Server| async move {
+                server.button_press(id).await?;
+                Ok::<_, warp::Rejection>(warp::reply::json(&true))
+            });
+
+        let leds = warp::path("leds");
+        let led = buttons.and(warp::path::param::<LedId>());
+
+        let leds_list = leds
+            .and(warp::path::end())
+            .and(server.clone())
+            .map(|server: Server| warp::reply::json(&server.leds().collect::<Vec<_>>()));
+
+        let led_status = led
+            .and(warp::path("status"))
+            .and(warp::path::end())
+            .and(server.clone())
+            .and_then(|id: LedId, server: Server| async move {
+                let status = server.led_status(id)?;
+                Ok::<_, warp::Rejection>(warp::reply::json(&status))
+            });
+
+        let events = warp::path("events")
+            .and(warp::path::end())
+            .and(server.clone())
+            .and_then(|server: Server| async move {
+                let events = server.events().await?;
+
+                Ok::<_, warp::Rejection>(warp::sse::reply(warp::sse::keep_alive().stream(
+                    events.map(|event| {
+                        Ok::<_, warp::Error>(match event {
+                            ServerEvent::LedStatus { id, status } => warp::sse::Event::default()
+                                .event(if status { "led-on" } else { "led-off" })
+                                .data(id.to_string()),
+                            ServerEvent::ButtonPress { id } => warp::sse::Event::default()
+                                .event("button-press")
+                                .data(id.to_string()),
+                        })
+                    }),
+                )))
             });
 
         let http_server = warp::serve(
             warp::get()
-                .and(get_root.or(get_capabilities))
-                .or(warp::post().and(post_button_press)),
+                .and(
+                    get_root
+                        .or(capabilities)
+                        .or(events)
+                        .or(buttons_list)
+                        .or(leds_list),
+                )
+                .or(warp::post().and(button_press.or(led_status))),
         );
 
         match bind {
