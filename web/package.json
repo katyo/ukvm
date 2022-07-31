@@ -1,0 +1,42 @@
+{
+  "name": "ubc-web",
+  "version": "0.1.0",
+  "description": "Simple web interface",
+  "scripts": {
+    "prepare": "smui-theme compile src/theme-light.css -i src/theme/light && smui-theme compile src/theme-dark.css -i src/theme/dark",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "parcel src/index.html",
+    "build": "parcel build src/index.html",
+    "build:analyze": "parcel build src/index.html --reporter @parcel/reporter-bundle-analyzer"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/katyo/ubc.git"
+  },
+  "keywords": [
+    "board",
+    "control"
+  ],
+  "author": "K. <kayo@illumium.org>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/katyo/ubc/issues"
+  },
+  "homepage": "https://github.com/katyo/ubc#readme",
+  "devDependencies": {
+    "@smui/button": "^6.0.0",
+    "@smui/common": "^6.0.0",
+    "@smui/dialog": "^6.0.0",
+    "@smui/icon-button": "^6.0.0",
+    "@smui/segmented-button": "^6.0.0",
+    "@smui/tab": "^6.0.0",
+    "@smui/tab-bar": "^6.0.0",
+    "@smui/top-app-bar": "^6.0.0",
+    "parcel": "^2.6.2",
+    "parcel-transformer-svelte3-plus": "^0.2.8",
+    "smui-theme": "^6.0.0",
+    "svelte": "^3.49.0",
+    "svelte-preprocess": "^4.10.7",
+    "typescript": "^4.7.4"
+  }
+}

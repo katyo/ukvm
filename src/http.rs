@@ -19,8 +19,6 @@ pub enum HttpBind {
 
 impl warp::reject::Reject for Error {}
 
-const INDEX_HTML: &'static str = include_str!("index.html");
-
 impl Server {
     pub async fn spawn_http(&self, bind: &HttpBind, stop: &Arc<Semaphore>) -> Result<()> {
         use warp::Filter;
@@ -33,11 +31,15 @@ impl Server {
             move || server.clone()
         });
 
-        let get_root = warp::path::end().map(|| {
+        #[cfg(not(feature = "web"))]
+        let index = warp::path::end().map(|| {
             warp::http::Response::builder()
                 .header("content-type", "text/html; charset=utf-8")
-                .body(INDEX_HTML)
+                .body(include_str!("index.html"))
         });
+
+        #[cfg(feature = "web")]
+        let index = include!(concat!(env!("OUT_DIR"), "/web.rs"));
 
         let capabilities = warp::path!("capabilities")
             .and(server.clone())
@@ -100,7 +102,7 @@ impl Server {
         let http_server = warp::serve(
             warp::get()
                 .and(
-                    get_root
+                    index
                         .or(capabilities)
                         .or(events)
                         .or(buttons_list)
