@@ -10,16 +10,13 @@ use std::{
         Arc,
     },
 };
-use tokio::{
-    select, spawn,
-    sync::{mpsc, watch},
-};
+use tokio::{select, spawn, sync::mpsc};
 #[cfg(feature = "zbus")]
 use zbus::zvariant::{OwnedValue, Type, Value};
 
 struct LedState {
     status: AtomicBool,
-    subscriber: mpsc::Sender<watch::Sender<bool>>,
+    subscriber: mpsc::Sender<mpsc::Sender<bool>>,
 }
 
 /// Single LED
@@ -76,6 +73,7 @@ impl Led {
                             // New listener received
                             Some(listener) => {
                                 log::debug!("Add listener");
+                                let _ = listener.try_send(state.status.load(Ordering::SeqCst));
                                 listeners.insert(listener);
                             }
                             // Led object dropped
@@ -93,13 +91,13 @@ impl Led {
                                 } else {
                                     false
                                 };
-                                state.status.store(status, Ordering::Relaxed);
+                                state.status.store(status, Ordering::SeqCst);
                                 // Send current status to all listeners
                                 for (_, listener) in &listeners {
                                     if listener.is_closed() {
                                         continue;
                                     }
-                                    let _ = listener.send(status);
+                                    let _ = listener.try_send(status);
                                 }
                             }
                             // Input error happenned
@@ -126,12 +124,12 @@ impl Led {
 
     /// Get current status of LED
     pub fn status(&self) -> bool {
-        self.state.status.load(Ordering::Relaxed)
+        self.state.status.load(Ordering::SeqCst)
     }
 
     /// Subscribe to status changes
-    pub async fn listen(&self) -> Result<watch::Receiver<bool>> {
-        let (sender, receiver) = watch::channel(self.status());
+    pub async fn listen(&self) -> Result<mpsc::Receiver<bool>> {
+        let (sender, receiver) = mpsc::channel(4);
         let result = self.state.subscriber.send(sender).await;
         if let Err(error) = &result {
             log::error!("Error when subscribing to status: {}", error);
@@ -208,7 +206,7 @@ impl Leds {
     }
 
     /// Listen LEDs status
-    pub async fn listen(&self, id: LedId) -> Result<Option<watch::Receiver<bool>>> {
+    pub async fn listen(&self, id: LedId) -> Result<Option<mpsc::Receiver<bool>>> {
         Ok(if let Some(led) = self.leds.get(&id) {
             Some(led.listen().await?)
         } else {

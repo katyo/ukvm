@@ -18,9 +18,9 @@ export async function capabilities(): Promise<Capabilities> {
 export async function button_press(id: ButtonId) {
     const res = await fetch(`${root}/buttons/${id}/press`, {
         method: 'POST',
-        headers: {
+        /*headers: {
             'Content-Type': 'application/json;charset=utf-8'
-        }
+        }*/
     });
     if (res.status != 200) {
         throw `Invalid status: ${res.status}`;

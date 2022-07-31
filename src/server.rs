@@ -3,10 +3,7 @@ use serde::{Deserialize, Serialize};
 use slab::Slab;
 use std::{path::Path, sync::Arc};
 use tokio::{spawn, sync::mpsc};
-use tokio_stream::{
-    wrappers::{ReceiverStream, WatchStream},
-    Stream, StreamExt,
-};
+use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 
 /// Server configuration
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -176,7 +173,7 @@ impl Server {
         // Get LED events receivers and convert into server events streams
         let led_listens = self.state.leds.list().map(|id| async move {
             self.state.leds.listen(id).await.map(|receiver| {
-                WatchStream::new(receiver.unwrap())
+                ReceiverStream::new(receiver.unwrap())
                     .map(move |status| ServerEvent::LedStatus { id, status })
             })
         });
