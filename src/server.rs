@@ -1,7 +1,10 @@
 use crate::{Bind, ButtonId, Buttons, ButtonsConfig, LedId, Leds, LedsConfig, Result};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{Arc, Weak},
+};
 use tokio::{spawn, sync::mpsc};
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 
@@ -52,6 +55,24 @@ struct ServerState {
 #[derive(Clone)]
 pub struct Server {
     state: Arc<ServerState>,
+}
+
+/// Weak reference to server
+#[derive(Clone)]
+pub struct ServerRef {
+    state: Weak<ServerState>,
+}
+
+impl ServerRef {
+    /// Try to get server instance by weak reference
+    pub fn upgrade(&self) -> Result<Server> {
+        Ok(Server {
+            state: self
+                .state
+                .upgrade()
+                .ok_or_else(|| "Seems server is out of life")?,
+        })
+    }
 }
 
 impl Server {
@@ -112,6 +133,13 @@ impl Server {
                 leds,
             }),
         })
+    }
+
+    /// Get weak ref to server
+    pub fn downgrade(&self) -> ServerRef {
+        ServerRef {
+            state: Arc::downgrade(&self.state),
+        }
     }
 
     /// Emit internal server event

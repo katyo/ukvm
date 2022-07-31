@@ -31,9 +31,10 @@ impl Server {
         let bind = bind.clone();
         let stop = stop.clone();
 
-        let server = warp::any().map({
-            let server = self.clone();
-            move || server.clone()
+        let server_ref = self.downgrade();
+        let server = warp::any().and_then(move || {
+            let server_ref = server_ref.clone();
+            async move { Ok::<_, warp::Rejection>(server_ref.upgrade()?) }
         });
 
         #[cfg(not(feature = "web"))]
