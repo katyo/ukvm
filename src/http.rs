@@ -1,7 +1,12 @@
 use crate::{ButtonId, Error, LedId, Result, Server, ServerEvent};
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
-use tokio::{net::UnixListener, spawn, sync::Semaphore};
+use tokio::{
+    fs::{metadata, remove_file},
+    net::UnixListener,
+    spawn,
+    sync::Semaphore,
+};
 use tokio_stream::{wrappers::UnixListenerStream, StreamExt};
 
 /// HTTP service binding
@@ -129,7 +134,16 @@ impl Server {
                 });
             }
             HttpBind::Path(path) => {
+                use std::os::unix::fs::FileTypeExt;
+
                 log::debug!("Starting {}", path.display());
+
+                // Remove socket file if exists
+                if let Ok(meta) = metadata(&path).await {
+                    if meta.file_type().is_socket() {
+                        remove_file(&path).await?;
+                    }
+                }
 
                 let future = http_server.serve_incoming_with_graceful_shutdown(
                     UnixListenerStream::new(UnixListener::bind(&path)?),
@@ -145,6 +159,8 @@ impl Server {
                     log::info!("Started {}", path.display());
                     future.await;
                     log::info!("Stopped {}", path.display());
+                    // Don't forget remove socket file
+                    let _ = remove_file(&path).await;
                 });
             }
         }
