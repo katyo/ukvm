@@ -61,7 +61,7 @@ impl Led {
         });
 
         spawn({
-            let state = state.clone();
+            let state_ref = Arc::downgrade(&state);
             async move {
                 let mut listeners = Slab::with_capacity(8);
 
@@ -73,12 +73,16 @@ impl Led {
                             // New listener received
                             Some(listener) => {
                                 log::debug!("Add listener");
-                                let _ = listener.try_send(state.status.load(Ordering::SeqCst));
-                                listeners.insert(listener);
+                                if let Some(state) = state_ref.upgrade() {
+                                    let _ = listener.try_send(state.status.load(Ordering::SeqCst));
+                                    listeners.insert(listener);
+                                } else {
+                                    // Seems LED object dropped
+                                    break;
+                                }
                             }
-                            // Led object dropped
+                            // LED object dropped
                             None => {
-                                log::debug!("Finalize receiving events");
                                 break;
                             }
                         },
@@ -91,13 +95,18 @@ impl Led {
                                 } else {
                                     false
                                 };
-                                state.status.store(status, Ordering::SeqCst);
-                                // Send current status to all listeners
-                                for (_, listener) in &listeners {
-                                    if listener.is_closed() {
-                                        continue;
+                                if let Some(state) = state_ref.upgrade() {
+                                    state.status.store(status, Ordering::SeqCst);
+                                    // Send current status to all listeners
+                                    for (_, listener) in &listeners {
+                                        if listener.is_closed() {
+                                            continue;
+                                        }
+                                        let _ = listener.try_send(status);
                                     }
-                                    let _ = listener.try_send(status);
+                                } else {
+                                    // Seems LED object dropped
+                                    break;
                                 }
                             }
                             // Input error happenned
@@ -116,6 +125,7 @@ impl Led {
                         !remove
                     });
                 }
+                log::debug!("Finalize receiving events");
             }
         });
 
