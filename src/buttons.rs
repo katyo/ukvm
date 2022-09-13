@@ -1,23 +1,15 @@
 use crate::Result;
-use gpiod::{Active, Bias, Chip, Drive, LineId, Lines, Options, Output};
+use gpiod::{Active, Bias, Chip, Drive, LineId, Options};
 use parse_display::{Display, FromStr};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::{
-    sync::RwLock,
-    time::{sleep, Duration},
-};
+use tokio::{spawn, sync::watch};
 #[cfg(feature = "zbus")]
 use zbus::zvariant::{OwnedValue, Type, Value};
 
-struct ButtonState {
-    outputs: RwLock<Lines<Output>>,
-    delay: Duration,
-}
-
 /// Button interface
 pub struct Button {
-    state: ButtonState,
+    state_sender: watch::Sender<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -39,44 +31,61 @@ pub struct ButtonConfig {
     /// GPIO line drive
     #[serde(default)]
     pub drive: Drive,
-
-    /// Press duration (milliseconds)
-    #[serde(default = "default_delay")]
-    pub delay: u32,
-}
-
-const fn default_delay() -> u32 {
-    250
 }
 
 impl Button {
     /// Instantiate new button
     pub async fn new(id: ButtonId, config: &ButtonConfig) -> Result<Self> {
-        let state = ButtonState {
-            outputs: RwLock::new(
-                Chip::new(&config.chip)
-                    .await?
-                    .request_lines(
-                        Options::output(&[config.line])
-                            .active(config.active)
-                            .bias(config.bias)
-                            .drive(config.drive)
-                            .consumer(format!("{}-{}-button", env!("CARGO_PKG_NAME"), id)),
-                    )
-                    .await?,
-            ),
-            delay: Duration::from_millis(config.delay as _),
-        };
+        let outputs = Chip::new(&config.chip)
+            .await?
+            .request_lines(
+                Options::output(&[config.line])
+                    .active(config.active)
+                    .bias(config.bias)
+                    .drive(config.drive)
+                    .consumer(format!("{}-{}-button", env!("CARGO_PKG_NAME"), id)),
+            )
+            .await?;
 
-        Ok(Self { state })
+        //let delay = Duration::from_millis(config.delay as _);
+
+        let (state_sender, mut state_receiver) = watch::channel(false);
+
+        spawn({
+            async move {
+                log::debug!("Initialize receiving events");
+
+                while let Ok(_) = state_receiver.changed().await {
+                    // Button state changed
+                    let state = *state_receiver.borrow();
+                    if let Err(error) = outputs.set_values([state]).await {
+                        log::error!("Error when changing state: {}", error);
+                        break;
+                    }
+                }
+
+                log::debug!("Finalize receiving events");
+            }
+        });
+
+        Ok(Self { state_sender })
     }
 
-    /// Simulate button press
-    pub async fn press(&self) -> Result<()> {
-        let outputs = self.state.outputs.write().await;
-        outputs.set_values([true]).await?;
-        sleep(self.state.delay).await;
-        outputs.set_values([false]).await?;
+    /// Get current state
+    pub fn state(&self) -> bool {
+        *self.state_sender.borrow()
+    }
+
+    /// Subscribe to state changes
+    pub fn watch(&self) -> watch::Receiver<bool> {
+        self.state_sender.subscribe()
+    }
+
+    /// Change button state
+    pub fn set_state(&self, state: bool) -> Result<()> {
+        self.state_sender
+            .send(state)
+            .map_err(|_| "Button dropped")?;
         Ok(())
     }
 }
@@ -112,6 +121,8 @@ pub enum ButtonId {
 }
 
 /// Buttons control service
+#[derive(educe::Educe)]
+#[educe(Deref)]
 pub struct Buttons {
     /// Buttons
     buttons: HashMap<ButtonId, Button>,
@@ -135,20 +146,5 @@ impl Buttons {
         }
 
         Ok(Self { buttons })
-    }
-
-    /// Get present buttons
-    pub fn list<'a>(&'a self) -> impl Iterator<Item = ButtonId> + 'a {
-        self.buttons.keys().copied()
-    }
-
-    /// Simulate button press
-    pub async fn press(&self, id: ButtonId) -> Result<bool> {
-        Ok(if let Some(button) = self.buttons.get(&id) {
-            button.press().await?;
-            true
-        } else {
-            false
-        })
     }
 }

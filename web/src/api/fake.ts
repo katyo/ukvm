@@ -1,7 +1,7 @@
-import { LedId, ButtonId, Capabilities, OnLedStatus, OnButtonPress } from './types.ts';
+import { LedId, ButtonId, Capabilities, OnLedState, OnButtonState } from './types.ts';
 
 export { LedId, ButtonId };
-export type { Capabilities, OnLedStatus, OnButtonPress };
+export type { Capabilities, OnLedState, OnButtonState };
 
 function random_range(min: number, max: number): number {
     return Math.random() * (max - min) + min;
@@ -51,30 +51,36 @@ function activity<Config>(config: Config, on: (config: Config) => number): (conf
     };
 }
 
-const led_status_handlers: OnLedStatus[] = [];
+const led_state_handlers: OnLedState[] = [];
 
 /// Add LED status handler
-export function on_led_status(handler: OnLedStatus) {
-    led_status_handlers.push(handler);
+export function on_led_state(handler: OnLedState) {
+    led_state_handlers.push(handler);
 }
 
-function handle_led_status(id: LedId, status: boolean) {
-    for (const handler of led_status_handlers) {
+function handle_led_state(id: LedId, status: boolean) {
+    for (const handler of led_state_handlers) {
         handler(id, status);
     }
 }
 
-const button_press_handlers: OnButtonPress[] = [];
+const button_states: { [id: string]: boolean } = {
+    [ButtonId.Power]: false,
+    [ButtonId.Reset]: false,
+    [ButtonId.Clear]: false,
+};
+const button_state_handlers: OnButtonState[] = [];
 
-function handle_button_press(id: ButtonId) {
-    for (const handler of button_press_handlers) {
-        handler(id);
+function handle_button_state(id: ButtonId, state: boolean) {
+    button_states[id] = state;
+    for (const handler of button_state_handlers) {
+        handler(id, state);
     }
 }
 
-/// Add button press handler
-export function on_button_press(handler: OnButtonPress) {
-    button_press_handlers.push(handler);
+/// Add button state handler
+export function on_button_state(handler: OnButtonState) {
+    button_state_handlers.push(handler);
 }
 
 interface LedActivityRandom {
@@ -94,30 +100,30 @@ const led_activity_idle: LedActivity = {
     off: [1000, 2000],
 };
 
-let disk_led_status = false;
+let disk_led_state = false;
 const disk_led_activity = activity<LedActivity>(led_activity_off, config => {
     if (config) {
-        disk_led_status = !disk_led_status;
+        disk_led_state = !disk_led_state;
     } else {
-        disk_led_status = false;
+        disk_led_state = false;
     }
-    handle_led_status(LedId.Disk, disk_led_status);
+    handle_led_state(LedId.Disk, disk_led_state);
     if (config) {
-        return random_delay(config[disk_led_status ? 'on' : 'off'] as Delay);
+        return random_delay(config[disk_led_state ? 'on' : 'off'] as Delay);
     }
     return 0;
 });
 
-let ether_led_status = false;
+let ether_led_state = false;
 const ether_led_activity = activity<LedActivity>(led_activity_off, config => {
     if (config) {
-        ether_led_status = !ether_led_status;
+        ether_led_state = !ether_led_state;
     } else {
-        ether_led_status = false;
+        ether_led_state = false;
     }
-    handle_led_status(LedId.Ether, ether_led_status);
+    handle_led_state(LedId.Ether, ether_led_state);
     if (config) {
-        return random_delay(config[ether_led_status ? 'on' : 'off'] as Delay);
+        return random_delay(config[ether_led_state ? 'on' : 'off'] as Delay);
     }
     return 0;
 });
@@ -126,7 +132,7 @@ let power_state = false;
 
 async function power_on() {
     power_state = true;
-    handle_led_status(LedId.Power, power_state);
+    handle_led_state(LedId.Power, power_state);
     disk_led_activity(led_activity_high);
     ether_led_activity(led_activity_high);
     await sleep([1500, 2000]);
@@ -141,12 +147,22 @@ async function power_off() {
     disk_led_activity(led_activity_off);
     ether_led_activity(led_activity_off);
     power_state = false;
-    handle_led_status(LedId.Power, power_state);
+    handle_led_state(LedId.Power, power_state);
 }
 
-/// Press button
-export async function button_press(id: ButtonId) {
-    handle_button_press(id);
+/// Get LED state
+export async function led_state(id: LedId): Promise<boolean> {
+    return id == LedId.Power ? power_state : id == LedId.Disk ? disk_led_state : ether_led_state;
+}
+
+/// Get button state
+export async function button_state(id: ButtonId): Promise<boolean> {
+    return button_states[id];
+}
+
+/// Set button state
+export async function set_button_state(id: ButtonId, state: boolean) {
+    handle_button_state(id, state);
     switch (id) {
         case ButtonId.Power:
             power_state = !power_state;

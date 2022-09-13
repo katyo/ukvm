@@ -1,8 +1,7 @@
-use crate::{ButtonId, Error, LedId, Result, Server, ServerEvent};
+use crate::{ButtonId, Error, LedId, Result, Server};
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::{spawn, sync::Semaphore};
-use tokio_stream::StreamExt;
 use zbus::{dbus_interface, Address, ConnectionBuilder, SignalContext};
 
 /// DBus service binding
@@ -38,58 +37,60 @@ impl zbus::DBusError for Error {
     }
 }
 
-/*impl From<Error> for zbus::fdo::Error {
-    fn from(error: Error) -> Self {}
-}*/
-
-macro_rules! dbus {
-    (name $($name:ident).+) => {
-        concat!("org.", env!("CARGO_PKG_NAME"), ".", stringify!($($name).+))
-    };
-
-    (path $($name:ident)/+ ) => {
-        concat!("/org/", env!("CARGO_PKG_NAME"), "/", stringify!($($name)/+))
-    };
+struct Button {
+    id: ButtonId,
+    server: Server,
 }
 
-struct Buttons(Server);
-
-#[dbus_interface(name = "org.ubc.Buttons")]
-impl Buttons {
-    /// List present buttons
+#[dbus_interface(name = "org.ubc.Button")]
+impl Button {
+    /// Button id
     #[dbus_interface(property)]
-    fn list(&self) -> Vec<ButtonId> {
-        self.0.buttons().collect()
+    fn id(&self) -> ButtonId {
+        self.id
     }
 
-    /// Press specific button
-    async fn press(&self, button: ButtonId) -> Result<()> {
-        Ok(self.0.button_press(button).await?)
+    /// Current state
+    fn state(&self) -> bool {
+        self.server.buttons().get(&self.id).unwrap().state()
     }
 
-    /// Button pressed
+    /// Change state
+    fn set_state(&self, state: bool) -> Result<()> {
+        Ok(self
+            .server
+            .buttons()
+            .get(&self.id)
+            .unwrap()
+            .set_state(state)?)
+    }
+
+    /// State changed
     #[dbus_interface(signal)]
-    async fn pressed(signal_ctx: &SignalContext<'_>, id: ButtonId) -> zbus::Result<()>;
+    async fn state_changed(signal_ctx: &SignalContext<'_>, state: bool) -> zbus::Result<()>;
 }
 
-struct Leds(Server);
+struct Led {
+    id: LedId,
+    server: Server,
+}
 
-#[dbus_interface(name = "org.ubc.Leds")]
-impl Leds {
-    /// List present LEDs
+#[dbus_interface(name = "org.ubc.Led")]
+impl Led {
+    /// LED id
     #[dbus_interface(property)]
-    fn list(&self) -> Vec<LedId> {
-        self.0.leds().collect()
+    fn id(&self) -> LedId {
+        self.id
     }
 
-    /// Get status of specific LED
-    fn status(&self, led: LedId) -> Result<bool> {
-        Ok(self.0.led_status(led)?)
+    /// Current state
+    fn state(&self) -> bool {
+        self.server.leds().get(&self.id).unwrap().state()
     }
 
-    /// LEDs status changes
+    /// State changed
     #[dbus_interface(signal)]
-    async fn changed(signal_ctx: &SignalContext<'_>, id: LedId, status: bool) -> zbus::Result<()>;
+    async fn state_changed(signal_ctx: &SignalContext<'_>, state: bool) -> zbus::Result<()>;
 }
 
 impl Server {
@@ -113,53 +114,68 @@ impl Server {
             )?,
         };
 
-        let connection = builder
-            .name(dbus!(name Control))?
-            .serve_at(dbus!(path buttons), Buttons(self.clone()))?
-            .serve_at(dbus!(path leds), Leds(self.clone()))?
-            .build()
-            .await?;
+        let mut builder = builder.name("org.ubc.Control")?;
 
-        let events = spawn({
-            let connection = connection.clone();
-            let server = self.clone();
+        for id in self.buttons().keys().copied() {
+            builder = builder.serve_at(
+                format!("/org/ubc/button/{}", id),
+                Button {
+                    id,
+                    server: self.clone(),
+                },
+            )?;
+        }
 
-            async move {
-                let mut events = server.events().await?;
-                let object_server = connection.object_server();
+        for id in self.leds().keys().copied() {
+            builder = builder.serve_at(
+                format!("/org/ubc/led/{}", id),
+                Led {
+                    id,
+                    server: self.clone(),
+                },
+            )?;
+        }
 
-                let leds_ref = object_server.interface::<_, Leds>(dbus!(path leds)).await?;
+        let connection = builder.build().await?;
 
-                let buttons_ref = object_server
-                    .interface::<_, Buttons>(dbus!(path buttons))
-                    .await?;
-
-                while let Some(event) = events.next().await {
-                    match event {
-                        ServerEvent::LedStatus { id, status } => {
-                            Leds::changed(leds_ref.signal_context(), id, status).await?;
-                        }
-                        ServerEvent::ButtonPress { id } => {
-                            Buttons::pressed(buttons_ref.signal_context(), id).await?;
-                        }
+        for (id, inst) in self.buttons().iter() {
+            let mut watch = inst.watch();
+            let reference = connection
+                .object_server()
+                .interface::<_, Button>(format!("/org/ubc/button/{}", id))
+                .await?;
+            spawn(async move {
+                while let Ok(_) = watch.changed().await {
+                    let state = *watch.borrow();
+                    let s_ctx = reference.signal_context();
+                    if let Err(error) = Button::state_changed(s_ctx, state).await {
+                        log::error!("Error notifying button state change: {}", error);
                     }
                 }
+            });
+        }
 
-                Ok::<(), Error>(())
-            } /*
-              .then(|result| {
-                  if let Err(error) = result {
-                      log::error!("Error while events processing: {}", error);
-                  }
-              })*/
-        });
+        for (id, inst) in self.leds().iter() {
+            let mut watch = inst.watch();
+            let reference = connection
+                .object_server()
+                .interface::<_, Led>(format!("/org/ubc/led/{}", id))
+                .await?;
+            spawn(async move {
+                while let Ok(_) = watch.changed().await {
+                    let state = *watch.borrow();
+                    let s_ctx = reference.signal_context();
+                    if let Err(error) = Led::state_changed(s_ctx, state).await {
+                        log::error!("Error notifying LED state change: {}", error);
+                    }
+                }
+            });
+        }
 
         spawn(async move {
             log::debug!("Await signal to stop");
             let lock = stop.acquire().await;
             log::debug!("Received stop signal");
-
-            events.abort();
 
             drop(connection);
             log::info!("Stopped");

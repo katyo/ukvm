@@ -2,26 +2,14 @@ use crate::Result;
 use gpiod::{Active, Bias, Chip, Edge, EdgeDetect, LineId, Options};
 use parse_display::{Display, FromStr};
 use serde::{Deserialize, Serialize};
-use slab::Slab;
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
-use tokio::{select, spawn, sync::mpsc};
+use std::collections::HashMap;
+use tokio::{select, spawn, sync::watch};
 #[cfg(feature = "zbus")]
 use zbus::zvariant::{OwnedValue, Type, Value};
 
-struct LedState {
-    status: AtomicBool,
-    subscriber: mpsc::Sender<mpsc::Sender<bool>>,
-}
-
 /// Single LED
 pub struct Led {
-    state: Arc<LedState>,
+    state_receiver: watch::Receiver<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -43,7 +31,6 @@ pub struct LedConfig {
 
 impl Led {
     pub async fn new(id: LedId, config: &LedConfig) -> Result<Self> {
-        let (subscriber, mut subscriptions) = mpsc::channel(8);
         let mut inputs = Chip::new(&config.chip)
             .await?
             .request_lines(
@@ -55,97 +42,47 @@ impl Led {
             )
             .await?;
 
-        let state = Arc::new(LedState {
-            status: AtomicBool::new(inputs.get_values([false]).await?[0]),
-            subscriber,
-        });
+        let (state_sender, state_receiver) = watch::channel(inputs.get_values([false]).await?[0]);
 
-        spawn({
-            let state_ref = Arc::downgrade(&state);
-            async move {
-                let mut listeners = Slab::with_capacity(8);
+        spawn(async move {
+            log::debug!("{id}: Initialize receiving events");
 
-                log::debug!("Initialize receiving events");
-
-                loop {
-                    select! {
-                        action = subscriptions.recv() => match action {
-                            // New listener received
-                            Some(listener) => {
-                                log::debug!("Add listener");
-                                if let Some(state) = state_ref.upgrade() {
-                                    let _ = listener.try_send(state.status.load(Ordering::SeqCst));
-                                    listeners.insert(listener);
-                                } else {
-                                    // Seems LED object dropped
-                                    break;
-                                }
-                            }
-                            // LED object dropped
-                            None => {
+            loop {
+                select! {
+                    // LED object dropped
+                    _ = state_sender.closed() => break,
+                    result = inputs.read_event() => match result {
+                        // Edge event received
+                        Ok(event) => {
+                            log::trace!("{id}: Event received: {}", event);
+                            let state = matches!(event.edge, Edge::Rising);
+                            if let Err(error) = state_sender.send(state) {
+                                log::error!("{id}: Error when sending state: {}", error);
                                 break;
                             }
-                        },
-                        result = inputs.read_event() => match result {
-                            // Edge event received
-                            Ok(event) => {
-                                log::trace!("Event received: {}", event);
-                                let status = if matches!(event.edge, Edge::Rising) {
-                                    true
-                                } else {
-                                    false
-                                };
-                                if let Some(state) = state_ref.upgrade() {
-                                    state.status.store(status, Ordering::SeqCst);
-                                    // Send current status to all listeners
-                                    for (_, listener) in &listeners {
-                                        if listener.is_closed() {
-                                            continue;
-                                        }
-                                        let _ = listener.try_send(status);
-                                    }
-                                } else {
-                                    // Seems LED object dropped
-                                    break;
-                                }
-                            }
-                            // Input error happenned
-                            Err(error) => {
-                                log::error!("Error when receiving event: {}", error);
-                                break;
-                            }
-                        },
-                    }
-                    // Remove already closed listeners
-                    listeners.retain(|_, listener| {
-                        let remove = listener.is_closed();
-                        if remove {
-                            log::debug!("Remove listener");
                         }
-                        !remove
-                    });
+                        // Input error happenned
+                        Err(error) => {
+                            log::error!("{id}: Error when receiving event: {}", error);
+                            break;
+                        }
+                    },
                 }
-                log::debug!("Finalize receiving events");
             }
+            log::debug!("{id}: Finalize receiving events");
         });
 
-        Ok(Self { state })
+        Ok(Self { state_receiver })
     }
 
-    /// Get current status of LED
-    pub fn status(&self) -> bool {
-        self.state.status.load(Ordering::SeqCst)
+    /// Get current state
+    pub fn state(&self) -> bool {
+        *self.state_receiver.borrow()
     }
 
-    /// Subscribe to status changes
-    pub async fn listen(&self) -> Result<mpsc::Receiver<bool>> {
-        let (sender, receiver) = mpsc::channel(4);
-        let result = self.state.subscriber.send(sender).await;
-        if let Err(error) = &result {
-            log::error!("Error when subscribing to status: {}", error);
-        }
-        result?;
-        Ok(receiver)
+    /// Watch state changes
+    pub fn watch(&self) -> watch::Receiver<bool> {
+        self.state_receiver.clone()
     }
 }
 
@@ -188,13 +125,15 @@ pub enum LedId {
 }
 
 /// LEDs control service
+#[derive(educe::Educe)]
+#[educe(Deref)]
 pub struct Leds {
     /// LEDs
     leds: HashMap<LedId, Led>,
 }
 
 impl Leds {
-    /// Create LEDs status service using specified config
+    /// Create LEDs state service using specified config
     pub async fn new(config: &LedsConfig) -> Result<Self> {
         let mut leds = HashMap::default();
 
@@ -203,24 +142,5 @@ impl Leds {
         }
 
         Ok(Self { leds })
-    }
-
-    /// Get present LEDs
-    pub fn list<'a>(&'a self) -> impl Iterator<Item = LedId> + 'a {
-        self.leds.keys().copied()
-    }
-
-    /// Get current status of specified LED
-    pub fn status(&self, id: LedId) -> Option<bool> {
-        self.leds.get(&id).map(|led| led.status())
-    }
-
-    /// Listen LEDs status
-    pub async fn listen(&self, id: LedId) -> Result<Option<mpsc::Receiver<bool>>> {
-        Ok(if let Some(led) = self.leds.get(&id) {
-            Some(led.listen().await?)
-        } else {
-            None
-        })
     }
 }

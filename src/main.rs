@@ -13,7 +13,7 @@ mod dbus;
 pub use args::{Args, Bind};
 pub use buttons::{ButtonId, Buttons, ButtonsConfig};
 pub use leds::{LedId, Leds, LedsConfig};
-pub use server::{Server, ServerConfig, ServerEvent};
+pub use server::{Server, ServerConfig, ServerRef};
 
 #[cfg(feature = "http")]
 pub use http::HttpBind;
@@ -65,6 +65,8 @@ async fn main() -> Result<()> {
         // create server instance
         let server = Server::new(&config).await?;
 
+        log::info!("Starting");
+
         // start server interfaces
         for bind in args.bind.iter().chain(&config.binds) {
             match bind {
@@ -81,6 +83,8 @@ async fn main() -> Result<()> {
                 }
             }
         }
+
+        log::info!("Started");
 
         select! {
             // stop server

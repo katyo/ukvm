@@ -93,7 +93,7 @@ fn main() {
 
                 write!(
                     src,
-                    ".map(|| warp::http::Response::builder().header(\"content-type\", {:?})",
+                    ".and(warp::get()).map(|| warp::http::Response::builder().header(\"content-type\", {:?})",
                     match ext {
                         "html" => "text/html; charset=utf-8",
                         "css" => "text/css",

@@ -14,14 +14,14 @@
     <Section align="end" toolbar>
       {#each leds as id}
       <Button disabled>
-        <Icon class="material-icons">radio_button_{leds_status[id] ? "checked" : "unchecked"}</Icon>
+        <Icon class="material-icons">radio_button_{leds_state[id] ? "checked" : "unchecked"}</Icon>
         {id} LED
       </Button>
       {:else}
       <Button disabled>No LEDs</Button>
       {/each}
       {#each buttons as id}
-        <Button on:click={() => { button_press_id = id; button_press_confirm = true; }}>
+        <Button on:press={() => { set_button_state(id, true); }} on:release={() => { set_button_state(id, false); }}>
           {id}
         </Button>
       {:else}
@@ -35,22 +35,9 @@
   <h5>Always Collapsed</h5>
 </AutoAdjust>
 
-<Dialog bind:open={button_press_confirm} aria-labelledby="simple-title" aria-describedby="simple-content">
-  <Title id="simple-title">Confirm action</Title>
-  <Content id="simple-content">You pressed {button_press_id} button. Are you sure?</Content>
-  <Actions>
-    <Button>
-      <Label>No</Label>
-    </Button>
-    <Button on:click={() => { button_press(button_press_id); }}>
-      <Label>Yes</Label>
-    </Button>
-  </Actions>
-</Dialog>
-
 <script lang="ts">
- //import { LedId, ButtonId, capabilities, button_press, on_led_status } from './api/fake';
- import { LedId, ButtonId, capabilities, button_press, on_led_status } from './api/http';
+ //import { LedId, ButtonId, capabilities, button_state, set_button_state, on_button_state, led_state, on_led_state } from './api/fake';
+ import { LedId, ButtonId, capabilities, button_state, set_button_state, on_button_state, led_state, on_led_state } from './api/http';
 
  import type { TopAppBarComponentDev } from '@smui/top-app-bar';
  import TopAppBar, { Row, Section, Title, AutoAdjust } from '@smui/top-app-bar';
@@ -62,47 +49,68 @@
  import { Icon, Label } from '@smui/common';
  import Dialog, { Title, Content, Actions } from '@smui/dialog';
 
- //import { onMount } from 'svelte';
+ import { onMount } from 'svelte';
 
  let topAppBar: TopAppBarComponentDev;
 
- export interface LedsStatus {
-   [id: LedId]: boolean,
+ export interface LedsState {
+     [id: LedId]: boolean,
+ }
+
+ export interface ButtonState {
+     [id: ButtonId]: boolean,
  }
 
  let leds: LedId[] = [];
- let leds_status: LedsStatus = {};
+ let leds_state: LedsState = {};
 
  let buttons: ButtonId[] = [];
- let button_press_confirm: boolean = false;
- let button_press_id: ButtonId?;
+ let buttons_state: ButtonsState = {};
 
  const enum PageId {
-   TextConsole = "text-console",
-   HostTextConsole = "host-text-console",
-   HostGraphicsConsole = "host-graphic-console",
+     TextConsole = "text-console",
+     HostTextConsole = "host-text-console",
+     HostGraphicsConsole = "host-graphic-console",
  }
 
  interface Page {
-   name: string,
-   title: string,
-   icon: string,
+     name: string,
+     title: string,
+     icon: string,
  }
 
  let pages: Page[] = [
-   { name: PageId.TextConsole, icon: 'terminal', title: 'Text Console' },
-   { name: PageId.HostTextConsole, icon: 'terminal', title: 'Host Test Console' },
-   { name: PageId.HostGraphicsConsole, icon: 'personal video', title: 'Host Video Console' },
+     { name: PageId.TextConsole, icon: 'terminal', title: 'Text Console' },
+     { name: PageId.HostTextConsole, icon: 'terminal', title: 'Host Test Console' },
+     { name: PageId.HostGraphicsConsole, icon: 'personal video', title: 'Host Video Console' },
  ];
 
  let active_page = pages[0];
 
- capabilities().then(capabilities => {
-   leds = capabilities.leds;
-   buttons = capabilities.buttons;
- });
+ onMount(() => {
+     capabilities().then(capabilities => {
+         leds = capabilities.leds;
+         buttons = capabilities.buttons;
 
- on_led_status((id, status) => {
-   leds_status[id] = status;
+         for (const id of leds) {
+             led_state(id).then(state => {
+                 leds_state[id] = state;
+             });
+         }
+
+         for (const id of buttons) {
+             button_state(id).then(state => {
+                 buttons_state[id] = state;
+             });
+         }
+
+         on_led_state((id, state) => {
+             leds_state[id] = state;
+         });
+
+         on_button_state((id, state) => {
+             buttons_state[id] = state;
+         });
+     });
  });
 </script>

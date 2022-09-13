@@ -18,10 +18,10 @@ export interface Capabilities {
     leds: LedId[],
 }
 
-export interface OnLedStatus {
-    (id: LedId, status: boolean): void;
+export interface OnLedState {
+    (id: LedId, state: boolean): void;
 }
 
-export interface OnButtonPress {
-    (id: ButtonId): void;
+export interface OnButtonState {
+    (id: ButtonId, state: boolean): void;
 }

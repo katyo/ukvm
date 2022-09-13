@@ -11,6 +11,9 @@ homepage = "https://github.com/katyo/ubc"
 repository = "https://github.com/katyo/ubc"
 edition = "2021"
 
+[dependencies.educe]
+version = "0.4"
+
 [dependencies.serde]
 version = "1"
 features = ["derive"]
@@ -54,9 +57,6 @@ features = ["macros", "rt-multi-thread", "signal"]
 version = "0.1"
 features = ["net", "sync"]
 
-[dependencies.async-trait]
-version = "0.1"
-
 [dependencies.zbus]
 version = "2"
 default-features = false
@@ -75,6 +75,7 @@ version = "0.2"
 features = ["serde"]
 
 [features]
+#default = ["http", "logs", "web"]
 default = ["http", "dbus", "logs", "web"]
 dbus = ["zbus"]
 http = ["warp"]
