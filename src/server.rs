@@ -201,8 +201,10 @@ impl Server {
         // Get LED events receivers and convert into server events streams
         let led_listens = self.state.leds.list().map(|id| async move {
             self.state.leds.listen(id).await.map(|receiver| {
-                ReceiverStream::new(receiver.unwrap())
-                    .map(move |status| ServerEvent::LedStatus { id, status })
+                ReceiverStream::new(receiver.unwrap()).map(move |status| {
+                    log::trace!("Send LED Event: {} {}", id, status);
+                    ServerEvent::LedStatus { id, status }
+                })
             })
         });
 
@@ -210,7 +212,12 @@ impl Server {
         let led_listens = futures::future::try_join_all(led_listens).await?;
 
         // Merge server events streams together
-        let events = futures::stream::select_all(led_listens);
+        //let events = futures::stream::select_all(led_listens);
+        let events = led_listens
+            .into_iter()
+            .enumerate()
+            .collect::<tokio_stream::StreamMap<_, _>>()
+            .map(|(_, s)| s);
 
         // Mixin internal server events
         let events = events.merge(ReceiverStream::new(self.subscribe().await?));
