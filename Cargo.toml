@@ -46,8 +46,9 @@ optional = true
 [dependencies.slab]
 version = "0.4"
 
-[dependencies.futures]
+[dependencies.futures-util]
 version = "0.3"
+features = ["sink"]
 
 [dependencies.tokio]
 version = "1"
@@ -66,7 +67,7 @@ optional = true
 [dependencies.warp]
 version = "0.3"
 default-features = false
-features = []
+features = ["websocket"]
 optional = true
 
 [dependencies.gpiod]
@@ -74,11 +75,18 @@ package = "tokio-gpiod"
 version = "0.2"
 features = ["serde"]
 
+[dependencies.hidg]
+package = "tokio-hidg"
+git = "https://github.com/katyo/hidg-rs"
+version = "0.1"
+features = ["serde"]
+optional = true
+
 [features]
-#default = ["http", "logs", "web"]
-default = ["http", "dbus", "logs", "web"]
+default = ["http", "dbus", "logs", "hid", "web"]
 dbus = ["zbus"]
 http = ["warp"]
 logs = ["lovely_env_logger"]
 logs2 = ["systemd-journal-logger"]
 web = ["http"]
+hid = ["hidg"]

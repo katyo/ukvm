@@ -5,6 +5,9 @@ use std::{
     sync::{Arc, Weak},
 };
 
+#[cfg(feature = "hid")]
+use crate::{Hid, HidConfig};
+
 /// Server configuration
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ServerConfig {
@@ -19,6 +22,11 @@ pub struct ServerConfig {
     /// GPIO LEDs
     #[serde(default)]
     pub leds: LedsConfig,
+
+    /// HID devices
+    #[cfg(feature = "hid")]
+    #[serde(default)]
+    pub hid: HidConfig,
 }
 
 impl ServerConfig {
@@ -39,6 +47,10 @@ struct ServerState {
 
     /// LEDs
     leds: Leds,
+
+    /// HID devices
+    #[cfg(feature = "hid")]
+    hid: Hid,
 }
 
 /// Server instance
@@ -71,8 +83,16 @@ impl Server {
         let buttons = Buttons::new(&config.buttons).await?;
         let leds = Leds::new(&config.leds).await?;
 
+        #[cfg(feature = "hid")]
+        let hid = Hid::new(&config.hid).await?;
+
         Ok(Self {
-            state: Arc::new(ServerState { buttons, leds }),
+            state: Arc::new(ServerState {
+                buttons,
+                leds,
+                #[cfg(feature = "hid")]
+                hid,
+            }),
         })
     }
 
@@ -91,5 +111,11 @@ impl Server {
     /// Get buttons
     pub fn buttons(&self) -> &Buttons {
         &self.state.buttons
+    }
+
+    /// Get HID devices
+    #[cfg(feature = "hid")]
+    pub fn hid(&self) -> &Hid {
+        &self.state.hid
     }
 }

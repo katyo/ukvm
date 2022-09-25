@@ -10,6 +10,9 @@ mod http;
 #[cfg(feature = "dbus")]
 mod dbus;
 
+#[cfg(feature = "hid")]
+mod hid;
+
 pub use args::{Args, Bind};
 pub use buttons::{ButtonId, Buttons, ButtonsConfig};
 pub use leds::{LedId, Leds, LedsConfig};
@@ -20,6 +23,9 @@ pub use http::HttpBind;
 
 #[cfg(feature = "dbus")]
 pub use dbus::DBusBind;
+
+#[cfg(feature = "hid")]
+pub use hid::{Hid, HidConfig};
 
 pub use result::{Error, Result};
 

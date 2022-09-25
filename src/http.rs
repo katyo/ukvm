@@ -1,17 +1,18 @@
 use crate::{ButtonId, Error, LedId, Result, Server};
-use futures::stream::select_all;
+use core::pin::Pin;
+use futures_util::{
+    sink::SinkExt,
+    stream::{once, select, select_all, Stream, StreamExt},
+};
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::{
     fs::{metadata, remove_file},
     net::UnixListener,
     spawn,
     sync::Semaphore,
 };
-use tokio_stream::{
-    wrappers::{UnixListenerStream, WatchStream},
-    StreamExt,
-};
+use tokio_stream::wrappers::{ReceiverStream, UnixListenerStream, WatchStream};
 
 /// HTTP service binding
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,38 +29,120 @@ pub enum HttpBind {
 
 impl warp::reject::Reject for Error {}
 
-/// Server capabilities
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct Capabilities {
-    /// Present buttons
-    pub buttons: Vec<ButtonId>,
-
-    /// Present LEDs
-    pub leds: Vec<LedId>,
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "$")]
+enum SocketInput {
+    #[serde(rename = "b")]
+    Button {
+        #[serde(rename = "b")]
+        button: ButtonId,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    #[cfg(feature = "hid")]
+    #[serde(rename = "k")]
+    KeyboardKey {
+        #[serde(rename = "k")]
+        key: crate::hid::Key,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    #[cfg(feature = "hid")]
+    #[serde(rename = "m")]
+    MouseButton {
+        #[serde(rename = "b")]
+        button: crate::hid::Button,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    #[cfg(feature = "hid")]
+    #[serde(rename = "p")]
+    MousePointer { x: i16, y: i16 },
+    #[cfg(feature = "hid")]
+    #[serde(rename = "p")]
+    MouseWheel {
+        #[serde(rename = "w")]
+        wheel: i8,
+    },
 }
 
-impl From<&Server> for Capabilities {
-    fn from(server: &Server) -> Self {
-        Self {
-            leds: server.leds().keys().copied().collect(),
-            buttons: server.buttons().keys().copied().collect(),
-        }
-    }
-}
-
-/*
-/// Server events
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "$", rename_all = "snake_case")]
-pub enum Event {
-    /// Button state change
-    ButtonState { id: ButtonId, state: bool },
-
+/// Outgoing message
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "$")]
+enum SocketOutput {
+    /// Initial state
+    #[serde(rename = "s")]
+    State {
+        /// Led states
+        #[serde(rename = "l")]
+        leds: HashMap<LedId, bool>,
+        /// Button states
+        #[serde(rename = "b")]
+        buttons: HashMap<ButtonId, bool>,
+        /// Keyboard state
+        #[cfg(feature = "hid")]
+        #[serde(rename = "k")]
+        keyboard: Option<crate::hid::KeyboardState>,
+        /// Mouse state
+        #[cfg(feature = "hid")]
+        #[serde(rename = "m")]
+        mouse: Option<crate::hid::MouseState>,
+    },
     /// LED state change
-    LedState { id: LedId, state: bool },
+    #[serde(rename = "l")]
+    Led {
+        #[serde(rename = "l")]
+        led: LedId,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    /// Button state change
+    #[serde(rename = "b")]
+    Button {
+        #[serde(rename = "b")]
+        button: ButtonId,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    /// Keyboard key state change
+    #[cfg(feature = "hid")]
+    #[serde(rename = "k")]
+    KeyboardKey {
+        #[serde(rename = "k")]
+        key: crate::hid::Key,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    /// Keyboard led state change
+    #[cfg(feature = "hid")]
+    #[serde(rename = "i")]
+    KeyboardLed {
+        #[serde(rename = "l")]
+        led: crate::hid::Led,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    /// Mouse button state change
+    #[cfg(feature = "hid")]
+    #[serde(rename = "m")]
+    MouseButton {
+        #[serde(rename = "b")]
+        button: crate::hid::Button,
+        #[serde(rename = "s")]
+        state: bool,
+    },
+    /// Mouse pointer change
+    #[cfg(feature = "hid")]
+    #[serde(rename = "p")]
+    MousePointer { x: i16, y: i16 },
+    /// Mouse wheel change
+    #[cfg(feature = "hid")]
+    #[serde(rename = "p")]
+    MouseWheel {
+        #[serde(rename = "w")]
+        wheel: i8,
+    },
 }
-*/
 
 impl Server {
     pub async fn spawn_http(&self, bind: &HttpBind, stop: &Arc<Semaphore>) -> Result<()> {
@@ -84,121 +167,68 @@ impl Server {
         #[cfg(feature = "web")]
         let index = include!(concat!(env!("OUT_DIR"), "/web.rs"));
 
-        let capabilities = warp::path("capabilities")
-            .and(warp::get())
-            .and(server.clone())
-            .map(|server: Server| warp::reply::json(&Capabilities::from(&server)));
-
-        let buttons = warp::path("buttons");
-
-        let buttons_list = buttons
+        let socket = warp::path("socket")
             .and(warp::path::end())
-            .and(warp::get())
+            .and(warp::ws())
             .and(server.clone())
-            .map(|server: Server| {
-                warp::reply::json(&server.buttons().keys().copied().collect::<Vec<_>>())
+            .map(|ws: warp::ws::Ws, server: Server| {
+                ws.on_upgrade(move |socket| async move {
+                    let (mut socket_sender, mut socket_receiver) = socket.split();
+
+                    spawn({
+                        let server = server.clone();
+                        async move {
+                            let mut stream = server.create_socket_output();
+                            while let Some(res) = stream.next().await {
+                                let msg = match serde_json::to_vec(&res) {
+                                    Ok(res) => warp::ws::Message::binary(res),
+                                    Err(error) => {
+                                        log::error!("Error when encoding message: {}", error);
+                                        continue;
+                                    }
+                                };
+                                if let Err(error) = socket_sender.feed(msg).await {
+                                    log::warn!("Error when sending message: {}", error);
+                                    break;
+                                }
+                            }
+                        }
+                    });
+
+                    let server = server.downgrade();
+
+                    while let Some(req) = socket_receiver.next().await {
+                        let msg = match req {
+                            Ok(msg) => msg,
+                            Err(error) => {
+                                log::warn!("Error when receiving message: {}", error);
+                                continue;
+                            }
+                        };
+                        if msg.is_text() {
+                            let req = match serde_json::from_slice(msg.as_bytes()) {
+                                Ok(req) => req,
+                                Err(error) => {
+                                    log::warn!("Error when parsing message: {}", error);
+                                    continue;
+                                }
+                            };
+
+                            let server = if let Ok(server) = server.upgrade() {
+                                server
+                            } else {
+                                break;
+                            };
+
+                            if let Err(error) = server.process_socket_input(req).await {
+                                log::warn!("Error when processing input: {}", error);
+                            }
+                        }
+                    }
+                })
             });
 
-        let button = buttons.and(warp::path::param::<ButtonId>());
-
-        let button_state = button.and(warp::path("state")).and(warp::path::end());
-
-        let button_state_get = button_state.and(warp::post()).and(server.clone()).and_then(
-            |id: ButtonId, server: Server| async move {
-                let state = server
-                    .buttons()
-                    .get(&id)
-                    .ok_or_else(warp::reject::not_found)?
-                    .state();
-                Ok::<_, warp::Rejection>(warp::reply::json(&state))
-            },
-        );
-
-        let button_state_set = button_state
-            .and(warp::put())
-            .and(warp::body::json())
-            .and(server.clone())
-            .and_then(|id: ButtonId, state: bool, server: Server| async move {
-                server
-                    .buttons()
-                    .get(&id)
-                    .ok_or_else(warp::reject::not_found)?
-                    .set_state(state)?;
-                Ok::<_, warp::Rejection>(warp::reply::json(&state))
-            });
-
-        let buttons_serve = buttons_list.or(button_state_get).or(button_state_set);
-
-        let leds = warp::path("leds");
-
-        let leds_list = leds
-            .and(warp::path::end())
-            .and(warp::get())
-            .and(server.clone())
-            .map(|server: Server| {
-                warp::reply::json(&server.leds().keys().copied().collect::<Vec<_>>())
-            });
-
-        let led = buttons.and(warp::path::param::<LedId>());
-
-        let led_state = led.and(warp::path("state")).and(warp::path::end());
-
-        let led_state_get = led_state.and(warp::post()).and(server.clone()).and_then(
-            |id: LedId, server: Server| async move {
-                let state = server
-                    .leds()
-                    .get(&id)
-                    .ok_or_else(warp::reject::not_found)?
-                    .state();
-                Ok::<_, warp::Rejection>(warp::reply::json(&state))
-            },
-        );
-
-        let leds_serve = leds_list.or(led_state_get);
-
-        let events = warp::path("events")
-            .and(warp::path::end())
-            .and(warp::get())
-            .and(server.clone())
-            .and_then(|server: Server| async move {
-                let button_events = select_all(server.buttons().iter().map(|(id, button)| {
-                    let id = *id;
-                    WatchStream::new(button.watch()).map(move |state| {
-                        Ok::<_, warp::Error>(
-                            warp::sse::Event::default()
-                                .event(if state {
-                                    "button-press"
-                                } else {
-                                    "button-release"
-                                })
-                                .data(id.to_string()),
-                        )
-                    })
-                }));
-
-                let led_events = select_all(server.leds().iter().map(|(id, led)| {
-                    let id = *id;
-                    WatchStream::new(led.watch()).map(move |state| {
-                        Ok::<_, warp::Error>(
-                            warp::sse::Event::default()
-                                .event(if state { "led-on" } else { "led-off" })
-                                .data(id.to_string()),
-                        )
-                    })
-                }));
-
-                let events = button_events.merge(led_events);
-
-                Ok::<_, warp::Rejection>(warp::sse::reply(warp::sse::keep_alive().stream(events)))
-            });
-
-        let http_server = warp::serve(
-            index
-                .or(capabilities)
-                .or(events)
-                .or(buttons_serve)
-                .or(leds_serve),
-        );
+        let http_server = warp::serve(index.or(socket));
 
         match bind {
             HttpBind::Addr(addr) => {
@@ -246,6 +276,158 @@ impl Server {
                     // Don't forget remove socket file
                     let _ = remove_file(&path).await;
                 });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn create_socket_state(&self) -> SocketOutput {
+        let leds = self
+            .leds()
+            .iter()
+            .map(|(id, obj)| (*id, obj.state()))
+            .collect();
+
+        let buttons = self
+            .buttons()
+            .iter()
+            .map(|(id, obj)| (*id, obj.state()))
+            .collect();
+
+        #[cfg(feature = "hid")]
+        let keyboard = self.hid().keyboard().map(|keyboard| keyboard.get_state());
+
+        #[cfg(feature = "hid")]
+        let mouse = self.hid().mouse().map(|mouse| mouse.get_state());
+
+        SocketOutput::State {
+            leds,
+            buttons,
+            #[cfg(feature = "hid")]
+            keyboard,
+            #[cfg(feature = "hid")]
+            mouse,
+        }
+    }
+
+    fn create_socket_output(&self) -> impl Stream<Item = SocketOutput> {
+        let button_events = select_all(self.buttons().iter().map(|(id, obj)| {
+            let button = *id;
+            WatchStream::new(obj.watch()).map(move |state| SocketOutput::Button { button, state })
+        }));
+
+        let led_events = select_all(self.leds().iter().map(|(id, obj)| {
+            let led = *id;
+            WatchStream::new(obj.watch()).map(move |state| SocketOutput::Led { led, state })
+        }));
+
+        let events = select(button_events, led_events);
+
+        let events = select(
+            events,
+            once({
+                let state = self.create_socket_state();
+                async move { state }
+            }),
+        );
+
+        #[cfg(feature = "hid")]
+        let events = {
+            let mut events = Box::pin(events) as Pin<Box<dyn Stream<Item = SocketOutput> + Send>>;
+
+            if let Some(keyboard) = self.hid().keyboard() {
+                let key_events = ReceiverStream::new(keyboard.watch_keys()).map(|change| {
+                    SocketOutput::KeyboardKey {
+                        key: *change,
+                        state: change.state(),
+                    }
+                });
+
+                let led_events = ReceiverStream::new(keyboard.watch_leds()).map(|change| {
+                    SocketOutput::KeyboardLed {
+                        led: *change,
+                        state: change.state(),
+                    }
+                });
+
+                let keyboard_events = select(key_events, led_events);
+
+                events = Box::pin(select(events, keyboard_events))
+            }
+
+            if let Some(mouse) = self.hid().mouse() {
+                use crate::hid::MouseStateChange;
+
+                let mouse_events =
+                    ReceiverStream::new(mouse.watch_state()).map(|change| match change {
+                        MouseStateChange::Button(change) => SocketOutput::MouseButton {
+                            button: *change,
+                            state: change.state(),
+                        },
+                        MouseStateChange::Pointer(change) => SocketOutput::MousePointer {
+                            x: change.0,
+                            y: change.1,
+                        },
+                        MouseStateChange::Wheel(change) => {
+                            SocketOutput::MouseWheel { wheel: *change }
+                        }
+                    });
+
+                events = Box::pin(select(events, mouse_events))
+            }
+
+            events
+        };
+
+        events
+    }
+
+    async fn process_socket_input(&self, req: SocketInput) -> Result<()> {
+        match req {
+            SocketInput::Button { button, state } => {
+                self.buttons()
+                    .get(&button)
+                    .ok_or("Unknown button")?
+                    .set_state(state)?;
+            }
+            #[cfg(feature = "hid")]
+            SocketInput::KeyboardKey { key, state } => {
+                self.hid()
+                    .keyboard()
+                    .ok_or("Keyboard disabled")?
+                    .change_key(crate::hid::KeyStateChange::new(key, state))
+                    .await?;
+            }
+            #[cfg(feature = "hid")]
+            SocketInput::MouseButton { button, state } => {
+                self.hid()
+                    .mouse()
+                    .ok_or("Mouse disabled")?
+                    .change_state(crate::hid::MouseStateChange::Button(
+                        crate::hid::ButtonStateChange::new(button, state),
+                    ))
+                    .await?;
+            }
+            #[cfg(feature = "hid")]
+            SocketInput::MousePointer { x, y } => {
+                self.hid()
+                    .mouse()
+                    .ok_or("Mouse disabled")?
+                    .change_state(crate::hid::MouseStateChange::Pointer(
+                        crate::hid::PointerValueChange::absolute((x, y)),
+                    ))
+                    .await?;
+            }
+            #[cfg(feature = "hid")]
+            SocketInput::MouseWheel { wheel } => {
+                self.hid()
+                    .mouse()
+                    .ok_or("Mouse disabled")?
+                    .change_state(crate::hid::MouseStateChange::Wheel(
+                        crate::hid::WheelValueChange::absolute(wheel),
+                    ))
+                    .await?;
             }
         }
 
