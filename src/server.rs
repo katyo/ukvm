@@ -8,6 +8,9 @@ use std::{
 #[cfg(feature = "hid")]
 use crate::{Hid, HidConfig};
 
+#[cfg(feature = "video")]
+use crate::{Video, VideoConfig};
+
 /// Server configuration
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ServerConfig {
@@ -27,6 +30,11 @@ pub struct ServerConfig {
     #[cfg(feature = "hid")]
     #[serde(default)]
     pub hid: HidConfig,
+
+    /// Video device
+    #[cfg(feature = "video")]
+    #[serde(default)]
+    pub video: VideoConfig,
 }
 
 impl ServerConfig {
@@ -51,6 +59,10 @@ struct ServerState {
     /// HID devices
     #[cfg(feature = "hid")]
     hid: Hid,
+
+    /// Video device
+    #[cfg(feature = "video")]
+    video: Video,
 }
 
 /// Server instance
@@ -86,12 +98,17 @@ impl Server {
         #[cfg(feature = "hid")]
         let hid = Hid::new(&config.hid).await?;
 
+        #[cfg(feature = "video")]
+        let video = Video::new(&config.video).await?;
+
         Ok(Self {
             state: Arc::new(ServerState {
                 buttons,
                 leds,
                 #[cfg(feature = "hid")]
                 hid,
+                #[cfg(feature = "video")]
+                video,
             }),
         })
     }
@@ -117,5 +134,11 @@ impl Server {
     #[cfg(feature = "hid")]
     pub fn hid(&self) -> &Hid {
         &self.state.hid
+    }
+
+    /// Get video device
+    #[cfg(feature = "video")]
+    pub fn video(&self) -> &Video {
+        &self.state.video
     }
 }

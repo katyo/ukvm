@@ -85,11 +85,19 @@ version = "0.1"
 features = ["serde"]
 optional = true
 
+[dependencies.linux-video]
+package = "tokio-linux-video"
+git = "https://github.com/katyo/linux-video-rs"
+version = "0.1"
+features = ["thread-safe", "serde"]
+optional = true
+
 [features]
-default = ["http", "dbus", "logs", "hid", "web"]
+default = ["http", "dbus", "logs", "hid", "video", "web"]
 dbus = ["zbus"]
 http = ["warp"]
 logs = ["lovely_env_logger"]
 logs2 = ["systemd-journal-logger"]
 web = ["http"]
 hid = ["hidg"]
+video = ["linux-video"]

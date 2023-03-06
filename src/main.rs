@@ -13,6 +13,9 @@ mod dbus;
 #[cfg(feature = "hid")]
 mod hid;
 
+#[cfg(feature = "video")]
+mod video;
+
 pub use args::{Args, Bind};
 pub use buttons::{ButtonId, Buttons, ButtonsConfig};
 pub use leds::{LedId, Leds, LedsConfig};
@@ -26,6 +29,9 @@ pub use dbus::DBusBind;
 
 #[cfg(feature = "hid")]
 pub use hid::{Hid, HidConfig};
+
+#[cfg(feature = "video")]
+pub use video::{Video, VideoConfig};
 
 pub use result::{Error, Result};
 
