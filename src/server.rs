@@ -33,8 +33,8 @@ impl ServerConfig {
     /// Read config from file
     pub async fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let raw: Vec<u8> = tokio::fs::read(path).await?;
-
-        let cfg = toml::de::from_slice::<serde_json::Value>(&raw)?;
+        let utf = core::str::from_utf8(&raw)?;
+        let cfg = toml::from_str::<serde_json::Value>(utf)?;
         let cfg = serde_json::from_value(cfg)?;
 
         Ok(cfg)

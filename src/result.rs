@@ -68,6 +68,7 @@ error_impl! {
     Error {
         Io(std::io::Error) { From },
         Addr(std::net::AddrParseError) { From },
+        Utf8(core::str::Utf8Error) { From },
         Num(std::num::ParseIntError) { From },
         Json(serde_json::Error) { From },
         Toml(toml::de::Error) { From },
