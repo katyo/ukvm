@@ -1,0 +1,107 @@
+[package]
+name = "ukvm"
+description = "Micro main-board control service."
+version = "0.1.0"
+license = "MIT"
+authors = ["K <kayo@illumium.org>"]
+readme = "README.md"
+categories = []
+keywords = ["main", "board", "control", "gpio", "bmc"]
+homepage = "https://github.com/katyo/ubc"
+repository = "https://github.com/katyo/ubc"
+edition = "2021"
+
+[dependencies.ukvm-core]
+version = "0.1.0"
+path = ".."
+
+[dependencies.educe]
+version = "0.4"
+
+[dependencies.serde]
+version = "1"
+features = ["derive", "rc"]
+
+[dependencies.serde_json]
+version = "1"
+
+[dependencies.postcard]
+version = "1"
+features = ["use-std"]
+optional = true
+
+[dependencies.toml]
+version = "0.7"
+
+[dependencies.parse-display]
+version = "0.8"
+
+[dependencies.clap]
+version = "4"
+features = ["derive"]
+
+[dependencies.log]
+version = "0.4"
+features = ["max_level_trace", "release_max_level_off"]
+
+[dependencies.lovely_env_logger]
+version = "0.6"
+optional = true
+
+[dependencies.systemd-journal-logger]
+version = "0.7"
+optional = true
+
+[dependencies.slab]
+version = "0.4"
+
+[dependencies.futures-util]
+version = "0.3"
+features = ["sink"]
+
+[dependencies.tokio]
+version = "1"
+features = ["macros", "rt-multi-thread", "signal"]
+
+[dependencies.tokio-stream]
+version = "0.1"
+features = ["net", "sync"]
+
+[dependencies.zbus]
+version = "3"
+default-features = false
+features = ["tokio"]
+optional = true
+
+[dependencies.warp]
+version = "0.3"
+default-features = false
+features = ["websocket"]
+optional = true
+
+[dependencies.gpiod]
+package = "tokio-gpiod"
+version = "0.2"
+features = ["serde"]
+
+[dependencies.hidg]
+package = "tokio-hidg"
+version = "0.1"
+features = ["serde"]
+optional = true
+
+[dependencies.linux-video]
+package = "tokio-linux-video"
+version = "0.1"
+features = ["thread-safe", "serde"]
+optional = true
+
+[features]
+default = ["postcard", "http", "dbus", "logs", "hid", "video"] #, "web"]
+dbus = ["ukvm-core/dbus", "zbus"]
+http = ["ukvm-core/http", "warp"]
+logs = ["lovely_env_logger"]
+logs2 = ["systemd-journal-logger"]
+web = ["http"]
+hid = ["ukvm-core/hid", "hidg"]
+video = ["ukvm-core/video", "linux-video"]

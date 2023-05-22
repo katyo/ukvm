@@ -1,113 +1,71 @@
-import { LedId, ButtonId, Capabilities, OnLedState, OnButtonState } from './types.ts';
+import { LedId, ButtonId, KeyboardKey, KeyboardLed, MouseButton, MousePointer, MouseWheel, InputApi, OutputApi, State } from './types.ts';
 
 export { LedId, ButtonId };
-export type { Capabilities, OnLedState, OnButtonState };
 
 const root = ""; //process.env.API_ROOT
 
-/// Get capabilities
-export async function capabilities(): Promise<Capabilities> {
-    const res = await fetch(`${root}/capabilities`);
-    if (res.status != 200) {
-        throw `Invalid status: ${res.status}`;
-    }
-    return await res.json();
-}
+export function api(handler: OutputApi): InputApi {
+    const socket = new WebSocket(`${root}/socket`);
 
-/// Get LED state
-export async function led_state(id: LedId): Promise<boolean> {
-    const res = await fetch(`${root}/leds/${id}/state`, {
-        method: 'POST',
-    });
-    if (res.status != 200) {
-        throw `Invalid status: ${res.status}`;
-    }
-    return await res.json();
-}
+    socket.onopen = function() {
+        handler.connection(true);
+    };
+    socket.onmessage = function(evt) {
+        if (typeof evt.data == 'string') {
+            const msg = JSON.parse(evt.data);
+            switch (msg.$) {
+                case 's': handler.state(msg); break;
+                case 'l': handler.led(msg.l, msg.s); break;
+                case 'b': handler.button(msg.b, msg.s); break;
+                case 'k': handler.keyboardKey(msg.k, msg.s); break;
+                case 'i': handler.keyboardLed(msg.l, msg.s); break;
+                case 'm': handler.mouseButton(msg.b, msg.s); break;
+                case 'p': handler.mousePointer(msg.p); break;
+                case 'w': handler.mousePointer(msg.w); break;
+            }
+        }
+    };
+    socket.onclose = function() {
+        handler.connection(false);
+    };
 
-/// Get button state
-export async function button_state(id: ButtonId): Promise<boolean> {
-    const res = await fetch(`${root}/buttons/${id}/state`, {
-        method: 'POST',
-    });
-    if (res.status != 200) {
-        throw `Invalid status: ${res.status}`;
+    function send(msg: { $: string, [key: string]: string | number | boolean | [number, number] | State }) {
+        socket.send(JSON.stringify(msg));
     }
-    return await res.json();
-}
 
-/// Set button state
-export async function set_button_state(id: ButtonId, state: boolean) {
-    const res = await fetch(`${root}/buttons/${id}/state`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json;charset=utf-8'
+    return {
+        button(id: ButtonId, state: boolean) {
+            send({
+                $: 'b',
+                b: id,
+                s: state,
+            });
         },
-        body: JSON.stringify(state)
-    });
-    if (res.status != 200) {
-        throw `Invalid status: ${res.status}`;
-    }
-}
-
-/// Event identifier
-const enum EventId {
-    LedOn = "led-on",
-    LedOff = "led-off",
-    ButtonPress = "button-press",
-    ButtonRelease = "button-release",
-}
-
-export interface EventHandlers {
-    led_status?: (id: LedId, status: boolean) => void;
-    button_press?: (id: ButtonId) => void;
-}
-
-let event_source: EventSource | undefined;
-
-const led_state_handlers: OnLedState[] = [];
-const button_state_handlers: OnButtonState[] = [];
-
-function make_event_source() {
-    if (!event_source) {
-        event_source = new EventSource(`${root}/events`);
-
-        event_source.addEventListener(EventId.LedOn, (event: Event) => {
-            for (const handler of led_state_handlers) {
-                handler(event.data, true);
-            }
-        });
-
-        event_source.addEventListener(EventId.LedOff, (event: Event) => {
-            for (const handler of led_state_handlers) {
-                handler(event.data, false);
-            }
-        });
-
-        event_source.addEventListener(EventId.ButtonPress, (event: Event) => {
-            for (const handler of button_state_handlers) {
-                handler(event.data, true);
-            }
-        });
-
-        event_source.addEventListener(EventId.ButtonRelease, (event: Event) => {
-            for (const handler of button_state_handlers) {
-                handler(event.data, false);
-            }
-        });
-    }
-}
-
-/// Add LED state handler
-export function on_led_state(handler: OnLedState) {
-    make_event_source();
-
-    led_state_handlers.push(handler);
-}
-
-/// Add button press handler
-export function on_button_state(handler: OnButtonState) {
-    make_event_source();
-
-    button_state_handlers.push(handler);
+        keyboardKey(key: KeyboardKey, state: boolean) {
+            send({
+                $: 'k',
+                k: key,
+                s: state,
+            })
+        },
+        mouseButton(button: MouseButton, state: boolean) {
+            send({
+                $: 'm',
+                b: button,
+                s: state,
+            })
+        },
+        mousePointer(pointer: MousePointer) {
+            send({
+                $: 'p',
+                p: pointer,
+            })
+        },
+        mouseWheel(wheel: MouseWheel) {
+            send({
+                $: 'w',
+                w: wheel,
+            })
+        },
+    };
 }

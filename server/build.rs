@@ -9,7 +9,7 @@ fn main() {
             process::Command,
         };
 
-        let web_dir = Path::new("web");
+        let web_dir = Path::new("..").join("web");
         let target_dir = web_dir.join("dist");
         let node_dir = web_dir.join("node_modules");
 
@@ -32,13 +32,13 @@ fn main() {
         if !node_dir.is_dir() {
             Command::new("npm")
                 .arg("update")
-                .current_dir(web_dir)
+                .current_dir(&web_dir)
                 .output()
                 .expect("Error while npm update");
 
             Command::new("npm")
                 .arg("install")
-                .current_dir(web_dir)
+                .current_dir(&web_dir)
                 .output()
                 .expect("Error while npm install");
         }
@@ -46,7 +46,7 @@ fn main() {
         Command::new("npm")
             .arg("run")
             .arg("build")
-            .current_dir(web_dir)
+            .current_dir(&web_dir)
             .output()
             .expect("Error while npm run build");
 
