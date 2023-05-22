@@ -71,6 +71,8 @@ error_impl! {
         Utf8(core::str::Utf8Error) { From },
         Num(std::num::ParseIntError) { From },
         Json(serde_json::Error) { From },
+        #[cfg(feature = "postcard")]
+        Postcard(postcard::Error) { From },
         Toml(toml::de::Error) { From },
         #[cfg(feature = "zbus")]
         DBus(zbus::Error) { From },

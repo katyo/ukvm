@@ -25,7 +25,7 @@ pub struct Args {
     pub bind: Vec<Bind>,
 
     /// Config file path
-    #[clap(short, long, value_parser, default_value = "/etc/ubc.toml")]
+    #[clap(short, long, value_parser, default_value = "/etc/ukvm.toml")]
     pub config: PathBuf,
 }
 

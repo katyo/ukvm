@@ -7,7 +7,8 @@ bind = "sock"
 
 [[binds]]
 proto = "dbus"
-type = "system"
+#type = "system"
+type = "session"
 
 [buttons.power]
 chip = "gpiochip0"
@@ -24,3 +25,10 @@ line = 22
 [leds.disk]
 chip = "gpiochip0"
 line = 27
+
+[hid]
+keybard = "hidg0"
+mouse = "hidg1"
+
+[video]
+device = "video0"

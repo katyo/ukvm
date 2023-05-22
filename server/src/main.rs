@@ -17,9 +17,13 @@ mod hid;
 mod video;
 
 pub use args::{Args, Bind};
-pub use buttons::{ButtonId, Buttons, ButtonsConfig};
-pub use leds::{LedId, Leds, LedsConfig};
+pub use buttons::{Buttons, ButtonsConfig};
+pub use leds::{Leds, LedsConfig};
 pub use server::{Server, ServerConfig, ServerRef};
+pub use ukvm_core::{ButtonId, LedId};
+
+#[cfg(feature = "http")]
+pub use ukvm_core::{SocketInput, SocketOutput};
 
 #[cfg(feature = "http")]
 pub use http::HttpBind;

@@ -42,7 +42,7 @@ struct Button {
     server: Server,
 }
 
-#[dbus_interface(name = "org.ubc.Button")]
+#[dbus_interface(name = "org.ukvm.Button")]
 impl Button {
     /// Button id
     #[dbus_interface(property)]
@@ -75,7 +75,7 @@ struct Led {
     server: Server,
 }
 
-#[dbus_interface(name = "org.ubc.Led")]
+#[dbus_interface(name = "org.ukvm.Led")]
 impl Led {
     /// LED id
     #[dbus_interface(property)]
@@ -114,11 +114,11 @@ impl Server {
             )?,
         };
 
-        let mut builder = builder.name("org.ubc.Control")?;
+        let mut builder = builder.name("org.ukvm.Control")?;
 
         for id in self.buttons().keys().copied() {
             builder = builder.serve_at(
-                format!("/org/ubc/button/{}", id),
+                format!("/org/ukvm/button/{}", id),
                 Button {
                     id,
                     server: self.clone(),
@@ -128,7 +128,7 @@ impl Server {
 
         for id in self.leds().keys().copied() {
             builder = builder.serve_at(
-                format!("/org/ubc/led/{}", id),
+                format!("/org/ukvm/led/{}", id),
                 Led {
                     id,
                     server: self.clone(),
@@ -142,7 +142,7 @@ impl Server {
             let mut watch = inst.watch();
             let reference = connection
                 .object_server()
-                .interface::<_, Button>(format!("/org/ubc/button/{}", id))
+                .interface::<_, Button>(format!("/org/ukvm/button/{}", id))
                 .await?;
             spawn(async move {
                 while let Ok(_) = watch.changed().await {
@@ -159,7 +159,7 @@ impl Server {
             let mut watch = inst.watch();
             let reference = connection
                 .object_server()
-                .interface::<_, Led>(format!("/org/ubc/led/{}", id))
+                .interface::<_, Led>(format!("/org/ukvm/led/{}", id))
                 .await?;
             spawn(async move {
                 while let Ok(_) = watch.changed().await {

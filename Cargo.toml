@@ -1,5 +1,5 @@
 [package]
-name = "ubc"
+name = "ukvm-core"
 description = "Micro main-board control service."
 version = "0.1.0"
 license = "MIT"
@@ -11,55 +11,18 @@ homepage = "https://github.com/katyo/ubc"
 repository = "https://github.com/katyo/ubc"
 edition = "2021"
 
+[workspace]
+members = ["server"]
+
 [dependencies.educe]
 version = "0.4"
 
-#[dependencies.either]
-#version = "1"
-
 [dependencies.serde]
 version = "1"
-features = ["derive"]
-
-[dependencies.serde_json]
-version = "1"
-
-[dependencies.toml]
-version = "0.7"
+features = ["derive", "rc"]
 
 [dependencies.parse-display]
 version = "0.8"
-
-[dependencies.clap]
-version = "4"
-features = ["derive"]
-
-[dependencies.log]
-version = "0.4"
-features = ["max_level_trace", "release_max_level_off"]
-
-[dependencies.lovely_env_logger]
-version = "0.6"
-optional = true
-
-[dependencies.systemd-journal-logger]
-version = "0.7"
-optional = true
-
-[dependencies.slab]
-version = "0.4"
-
-[dependencies.futures-util]
-version = "0.3"
-features = ["sink"]
-
-[dependencies.tokio]
-version = "1"
-features = ["macros", "rt-multi-thread", "signal"]
-
-[dependencies.tokio-stream]
-version = "0.1"
-features = ["net", "sync"]
 
 [dependencies.zbus]
 version = "3"
@@ -67,37 +30,15 @@ default-features = false
 features = ["tokio"]
 optional = true
 
-[dependencies.warp]
-version = "0.3"
-default-features = false
-features = ["websocket"]
-optional = true
-
-[dependencies.gpiod]
-package = "tokio-gpiod"
-version = "0.2"
-features = ["serde"]
-
-[dependencies.hidg]
-package = "tokio-hidg"
-#git = "https://github.com/katyo/hidg-rs"
+[dependencies.hidg-core]
 version = "0.1"
 features = ["serde"]
-optional = true
-
-[dependencies.linux-video]
-package = "tokio-linux-video"
-git = "https://github.com/katyo/linux-video-rs"
-version = "0.1"
-features = ["thread-safe", "serde"]
 optional = true
 
 [features]
-default = ["http", "dbus", "logs", "hid", "video", "web"]
+default = ["http", "hid", "video"]
 dbus = ["zbus"]
-http = ["warp"]
-logs = ["lovely_env_logger"]
-logs2 = ["systemd-journal-logger"]
+http = []
 web = ["http"]
-hid = ["hidg"]
-video = ["linux-video"]
+hid = ["hidg-core"]
+video = []
