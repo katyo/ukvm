@@ -1,0 +1,14 @@
+[Unit]
+Description=Micro KVM server
+After=network.target
+Wants=nginx.service
+
+[Service]
+Type=simple
+User=nobody
+Group=nogroup
+ExecStart=/usr/bin/ukvm -c /etc/ukvm.toml -r
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
