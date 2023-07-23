@@ -97,9 +97,11 @@ features = ["thread-safe", "serde"]
 optional = true
 
 [features]
-default = ["postcard", "http", "dbus", "logs", "hid", "video"] #, "web"]
+default = ["postcard", "http", "tls", "dbus", "logs", "hid", "video"] #, "web"]
 dbus = ["ukvm-core/dbus", "zbus"]
 http = ["ukvm-core/http", "warp"]
+comp = ["warp/compression"]
+tls = ["warp/tls"]
 logs = ["lovely_env_logger"]
 logs2 = ["systemd-journal-logger"]
 web = ["http"]

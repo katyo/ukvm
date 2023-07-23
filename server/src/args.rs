@@ -7,7 +7,7 @@ use std::{
 };
 
 #[cfg(feature = "http")]
-use crate::HttpBind;
+use crate::{HttpBind, HttpBindWay};
 
 #[cfg(feature = "dbus")]
 use crate::DBusBind;
@@ -62,7 +62,10 @@ impl FromStr for Bind {
             #[cfg(feature = "http")]
             if proto == "http" {
                 return if sub_proto == "unix" {
-                    Ok(Bind::Http(HttpBind::Path(bind.into())))
+                    Ok(Bind::Http(HttpBind {
+                        bind: HttpBindWay::Path(bind.into()),
+                        ..Default::default()
+                    }))
                 } else {
                     http_addr(bind)
                 };
@@ -108,7 +111,12 @@ fn socket_addr(bind: &str, default_port: u16) -> Result<SocketAddr> {
 
 #[cfg(feature = "http")]
 fn http_addr(bind: &str) -> Result<Bind> {
-    socket_addr(bind, 8080).map(|addr| Bind::Http(HttpBind::Addr(addr)))
+    socket_addr(bind, 8080).map(|addr| {
+        Bind::Http(HttpBind {
+            bind: HttpBindWay::Addr(addr),
+            ..Default::default()
+        })
+    })
 }
 
 #[cfg(feature = "dbus")]

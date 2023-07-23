@@ -5,7 +5,11 @@ use futures_util::{
     stream::{once, select, select_all, Stream, StreamExt},
 };
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+    sync::Arc,
+};
 use tokio::{
     fs::{metadata, remove_file},
     net::UnixListener,
@@ -20,10 +24,49 @@ use serde_json::{from_slice, to_vec};
 #[cfg(feature = "postcard")]
 use postcard::{from_bytes as from_slice, to_stdvec as to_vec};
 
+/// HTTP service options
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HttpBind {
+    /// Bind way
+    #[serde(flatten)]
+    pub bind: HttpBindWay,
+
+    #[cfg(feature = "tls")]
+    #[serde(flatten)]
+    /// Enable TLS encryption
+    pub tls: Option<HttpTlsOpts>,
+}
+
+/// HTTP service options
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpTlsOpts {
+    #[cfg(feature = "tls")]
+    /// Path to private key file
+    pub key: PathBuf,
+
+    #[cfg(feature = "tls")]
+    /// Path to certificate file
+    pub cert: PathBuf,
+
+    #[cfg(feature = "tls")]
+    /// Path to client auth file
+    pub auth: Option<PathBuf>,
+}
+
+impl Default for HttpTlsOpts {
+    fn default() -> Self {
+        Self {
+            key: PathBuf::from("/etc/ukvm/key.pem"),
+            cert: PathBuf::from("/etc/ukvm/cert.pem"),
+            auth: None,
+        }
+    }
+}
+
 /// HTTP service binding
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "bind", rename_all = "lowercase")]
-pub enum HttpBind {
+pub enum HttpBindWay {
     /// Network socket
     #[serde(rename = "tcp")]
     Addr(SocketAddr),
@@ -31,6 +74,15 @@ pub enum HttpBind {
     #[serde(rename = "unix")]
     /// Unix socket
     Path(PathBuf),
+}
+
+impl Default for HttpBindWay {
+    fn default() -> Self {
+        Self::Addr(SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            8080,
+        ))
+    }
 }
 
 impl warp::reject::Reject for Error {}
@@ -121,9 +173,35 @@ impl Server {
 
         let http_server = warp::serve(index.or(socket));
 
-        match bind {
-            HttpBind::Addr(addr) => {
+        match bind.bind {
+            HttpBindWay::Addr(addr) => {
                 log::debug!("Starting {}", addr);
+
+                #[cfg(feature = "tls")]
+                if let Some(tls) = &bind.tls {
+                    let http_server = http_server.tls().cert_path(&tls.cert).key_path(&tls.key);
+                    let http_server = if let Some(auth) = &tls.auth {
+                        http_server.client_auth_required_path(&auth)
+                    } else {
+                        http_server
+                    };
+
+                    let (addr, future) =
+                        http_server.bind_with_graceful_shutdown(addr, async move {
+                            log::debug!("Await signal to stop");
+                            let lock = stop.acquire().await;
+                            log::debug!("Received stop signal");
+                            drop(lock);
+                        });
+
+                    spawn(async move {
+                        log::info!("Started {}", addr);
+                        future.await;
+                        log::info!("Stopped {}", addr);
+                    });
+
+                    return Ok(());
+                }
 
                 let (addr, future) = http_server.bind_with_graceful_shutdown(addr, async move {
                     log::debug!("Await signal to stop");
@@ -138,7 +216,7 @@ impl Server {
                     log::info!("Stopped {}", addr);
                 });
             }
-            HttpBind::Path(path) => {
+            HttpBindWay::Path(path) => {
                 use std::os::unix::fs::FileTypeExt;
 
                 log::debug!("Starting {}", path.display());

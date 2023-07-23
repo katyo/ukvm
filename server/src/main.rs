@@ -26,7 +26,7 @@ pub use ukvm_core::{ButtonId, LedId};
 pub use ukvm_core::{SocketInput, SocketOutput};
 
 #[cfg(feature = "http")]
-pub use http::HttpBind;
+pub use http::{HttpBind, HttpBindWay};
 
 #[cfg(feature = "dbus")]
 pub use dbus::DBusBind;
