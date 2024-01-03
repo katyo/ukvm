@@ -1,37 +1,84 @@
 [package]
 name = "ukvm-core"
-description = "Micro main-board control service."
+description = "Micro network KVM core."
 version = "0.1.0"
 license = "MIT"
 authors = ["K <kayo@illumium.org>"]
 readme = "README.md"
 categories = []
-keywords = ["main", "board", "control", "gpio", "bmc"]
-homepage = "https://github.com/katyo/ubc"
-repository = "https://github.com/katyo/ubc"
+keywords = ["kvm", "ipkvm", "bmc", "server", "control"]
+homepage = "https://github.com/katyo/ukvm"
+repository = "https://github.com/katyo/ukvm"
 edition = "2021"
 
 [workspace]
 members = ["server"]
 
-[dependencies.educe]
-version = "0.4"
+[workspace.dependencies]
+educe = "0.4"
+slab = "0.4"
+futures-util = "0.3"
+tokio = "1"
+tokio-stream = "0.1"
+serde_json = "1"
+toml = "0.7"
+parse-display = "0.8"
+hidg-core = "0.1"
+lovely_env_logger = "0.6"
+systemd-journal-logger = "0.7"
+ukvm-core.path = "."
+ukvm-server.path = "server"
 
-[dependencies.serde]
+[workspace.dependencies.log]
+version = "0.4"
+features = ["max_level_trace", "release_max_level_off"]
+
+[workspace.dependencies.clap]
+version = "4"
+features = ["derive"]
+
+[workspace.dependencies.serde]
 version = "1"
 features = ["derive", "rc"]
 
-[dependencies.parse-display]
-version = "0.8"
+[workspace.dependencies.postcard]
+version = "1"
+features = ["use-std"]
+
+[workspace.dependencies.zbus]
+version = "3"
+default-features = false
+features = ["tokio"]
+
+[workspace.dependencies.warp]
+version = "0.3"
+default-features = false
+
+[workspace.dependencies.gpiod]
+package = "tokio-gpiod"
+version = "0.2"
+
+[workspace.dependencies.hidg]
+package = "tokio-hidg"
+version = "0.1"
+
+[workspace.dependencies.linux-video]
+package = "tokio-linux-video"
+version = "0.1"
+
+[dependencies]
+educe.workspace = true
+serde.workspace = true
+parse-display.workspace = true
 
 [dependencies.zbus]
-version = "3"
+workspace = true
 default-features = false
 features = ["tokio"]
 optional = true
 
 [dependencies.hidg-core]
-version = "0.1"
+workspace = true
 features = ["serde"]
 optional = true
 

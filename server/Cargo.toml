@@ -1,98 +1,71 @@
 [package]
 name = "ukvm"
-description = "Micro main-board control service."
+description = "Micro network KVM server."
 version = "0.1.0"
 license = "MIT"
 authors = ["K <kayo@illumium.org>"]
 readme = "README.md"
 categories = []
-keywords = ["main", "board", "control", "gpio", "bmc"]
-homepage = "https://github.com/katyo/ubc"
-repository = "https://github.com/katyo/ubc"
+keywords = ["kvm", "ipkvm", "bmc", "server", "control"]
+homepage = "https://github.com/katyo/ukvm"
+repository = "https://github.com/katyo/ukvm"
 edition = "2021"
 
-[dependencies.ukvm-core]
-version = "0.1.0"
-path = ".."
-
-[dependencies.educe]
-version = "0.4"
-
-[dependencies.serde]
-version = "1"
-features = ["derive", "rc"]
-
-[dependencies.serde_json]
-version = "1"
+[dependencies]
+educe.workspace = true
+slab.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+parse-display.workspace = true
+clap.workspace = true
+log.workspace = true
+ukvm-core.workspace = true
 
 [dependencies.postcard]
-version = "1"
-features = ["use-std"]
+workspace = true
 optional = true
 
-[dependencies.toml]
-version = "0.7"
-
-[dependencies.parse-display]
-version = "0.8"
-
-[dependencies.clap]
-version = "4"
-features = ["derive"]
-
-[dependencies.log]
-version = "0.4"
-features = ["max_level_trace", "release_max_level_off"]
-
 [dependencies.lovely_env_logger]
-version = "0.6"
+workspace = true
 optional = true
 
 [dependencies.systemd-journal-logger]
-version = "0.7"
+workspace = true
 optional = true
 
-[dependencies.slab]
-version = "0.4"
-
 [dependencies.futures-util]
-version = "0.3"
+workspace = true
 features = ["sink"]
 
 [dependencies.tokio]
-version = "1"
+workspace = true
 features = ["macros", "rt-multi-thread", "signal"]
 
 [dependencies.tokio-stream]
-version = "0.1"
+workspace = true
 features = ["net", "sync"]
 
 [dependencies.zbus]
-version = "3"
-default-features = false
-features = ["tokio"]
+workspace = true
 optional = true
 
 [dependencies.warp]
-version = "0.3"
-default-features = false
+workspace = true
 features = ["websocket"]
 optional = true
 
 [dependencies.gpiod]
-package = "tokio-gpiod"
-version = "0.2"
+workspace = true
 features = ["serde"]
 
 [dependencies.hidg]
-package = "tokio-hidg"
-version = "0.1"
+workspace = true
 features = ["serde"]
 optional = true
 
 [dependencies.linux-video]
-package = "tokio-linux-video"
-version = "0.1"
+workspace = true
 features = ["thread-safe", "serde"]
 optional = true
 
