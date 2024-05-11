@@ -1,15 +1,10 @@
-use crate::{log, Error, Result, Server, SocketInput, SocketOutput};
+use crate::{log, Error, HttpAddr, HttpBindAddr, Result, Server, SocketInput, SocketOutput};
 use core::pin::Pin;
 use futures_util::{
     sink::SinkExt,
     stream::{once, select, select_all, Stream, StreamExt},
 };
-use serde::{Deserialize, Serialize};
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::sync::Arc;
 use tokio::{
     fs::{metadata, remove_file},
     net::UnixListener,
@@ -24,74 +19,12 @@ use serde_json::{from_slice, to_vec};
 #[cfg(feature = "postcard")]
 use postcard::{from_bytes as from_slice, to_stdvec as to_vec};
 
-/// HTTP service options
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct HttpBind {
-    /// Bind way
-    #[serde(flatten)]
-    pub bind: HttpBindWay,
-
-    #[cfg(feature = "tls")]
-    #[serde(flatten)]
-    /// Enable TLS encryption
-    pub tls: Option<HttpTlsOpts>,
-}
-
-/// HTTP service options
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HttpTlsOpts {
-    #[cfg(feature = "tls")]
-    /// Path to private key file
-    pub key: PathBuf,
-
-    #[cfg(feature = "tls")]
-    /// Path to certificate file
-    pub cert: PathBuf,
-
-    #[cfg(feature = "tls")]
-    /// Path to client auth file
-    pub auth: Option<PathBuf>,
-}
-
-impl Default for HttpTlsOpts {
-    fn default() -> Self {
-        Self {
-            key: PathBuf::from("/etc/ukvm/key.pem"),
-            cert: PathBuf::from("/etc/ukvm/cert.pem"),
-            auth: None,
-        }
-    }
-}
-
-/// HTTP service binding
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "bind", rename_all = "lowercase")]
-pub enum HttpBindWay {
-    /// Network socket
-    #[serde(rename = "tcp")]
-    Addr(SocketAddr),
-
-    #[serde(rename = "unix")]
-    /// Unix socket
-    Path(PathBuf),
-}
-
-impl Default for HttpBindWay {
-    fn default() -> Self {
-        Self::Addr(SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-            8080,
-        ))
-    }
-}
-
 impl warp::reject::Reject for Error {}
 
 impl Server {
-    pub async fn spawn_http(&self, bind: &HttpBind, stop: &Arc<Semaphore>) -> Result<()> {
+    pub async fn spawn_http(&self, addr: &HttpBindAddr, stop: &Arc<Semaphore>) -> Result<()> {
         use warp::Filter;
 
-        let bind = bind.clone();
         let stop = stop.clone();
 
         let server_ref = self.downgrade();
@@ -173,12 +106,14 @@ impl Server {
 
         let http_server = warp::serve(index.or(socket));
 
-        match bind.bind {
-            HttpBindWay::Addr(addr) => {
-                log::debug!("Starting {}", addr);
+        let tls = &addr.tls;
+
+        match &addr.addr {
+            HttpAddr::Addr(addr) => {
+                log::debug!("Starting {addr}");
 
                 #[cfg(feature = "tls")]
-                if let Some(tls) = &bind.tls {
+                if let Some(tls) = tls {
                     let http_server = http_server.tls().cert_path(&tls.cert).key_path(&tls.key);
                     let http_server = if let Some(auth) = &tls.auth {
                         http_server.client_auth_required_path(&auth)
@@ -187,7 +122,7 @@ impl Server {
                     };
 
                     let (addr, future) =
-                        http_server.bind_with_graceful_shutdown(addr, async move {
+                        http_server.bind_with_graceful_shutdown(*addr, async move {
                             log::debug!("Await signal to stop");
                             let lock = stop.acquire().await;
                             log::debug!("Received stop signal");
@@ -195,15 +130,15 @@ impl Server {
                         });
 
                     spawn(async move {
-                        log::info!("Started {}", addr);
+                        log::info!("Started {addr}");
                         future.await;
-                        log::info!("Stopped {}", addr);
+                        log::info!("Stopped {addr}");
                     });
 
                     return Ok(());
                 }
 
-                let (addr, future) = http_server.bind_with_graceful_shutdown(addr, async move {
+                let (addr, future) = http_server.bind_with_graceful_shutdown(*addr, async move {
                     log::debug!("Await signal to stop");
                     let lock = stop.acquire().await;
                     log::debug!("Received stop signal");
@@ -211,12 +146,12 @@ impl Server {
                 });
 
                 spawn(async move {
-                    log::info!("Started {}", addr);
+                    log::info!("Started {addr}");
                     future.await;
-                    log::info!("Stopped {}", addr);
+                    log::info!("Stopped {addr}");
                 });
             }
-            HttpBindWay::Path(path) => {
+            HttpAddr::Path(path) => {
                 use std::os::unix::fs::FileTypeExt;
 
                 log::debug!("Starting {}", path.display());
@@ -237,6 +172,8 @@ impl Server {
                         drop(lock);
                     },
                 );
+
+                let path = path.clone();
 
                 spawn(async move {
                     log::info!("Started {}", path.display());
@@ -265,10 +202,16 @@ impl Server {
             .collect();
 
         #[cfg(feature = "hid")]
-        let keyboard = self.hid().and_then(|hid| hid.keyboard()).map(|keyboard| keyboard.get_state());
+        let keyboard = self
+            .hid()
+            .and_then(|hid| hid.keyboard())
+            .map(|keyboard| keyboard.get_state());
 
         #[cfg(feature = "hid")]
-        let mouse = self.hid().and_then(|hid| hid.mouse()).map(|mouse| mouse.get_state());
+        let mouse = self
+            .hid()
+            .and_then(|hid| hid.mouse())
+            .map(|mouse| mouse.get_state());
 
         SocketOutput::State {
             leds,

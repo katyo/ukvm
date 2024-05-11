@@ -1,12 +1,108 @@
 use crate::{
+    addr::socket_addr_parse,
     hid::{Button, Key, KeyboardState, Led, MouseState},
     ButtonId, LedId,
 };
+use core::str::FromStr;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+};
 
 #[cfg(feature = "video")]
 use std::sync::Arc;
+
+/// HTTP service options
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HttpBindAddr {
+    /// Bind way
+    #[serde(flatten)]
+    pub addr: HttpAddr,
+
+    #[cfg(feature = "tls")]
+    #[serde(flatten)]
+    /// Enable TLS encryption
+    pub tls: Option<HttpTlsOpts>,
+}
+
+impl FromStr for HttpBindAddr {
+    type Err = String;
+
+    fn from_str(uri: &str) -> Result<Self, Self::Err> {
+        Ok(Self {
+            addr: uri.parse()?,
+            ..Default::default()
+        })
+    }
+}
+
+/// HTTP service options
+#[cfg(feature = "tls")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HttpTlsOpts {
+    #[cfg(feature = "tls")]
+    /// Path to private key file
+    pub key: PathBuf,
+
+    #[cfg(feature = "tls")]
+    /// Path to certificate file
+    pub cert: PathBuf,
+
+    #[cfg(feature = "tls")]
+    /// Path to client auth file
+    pub auth: Option<PathBuf>,
+}
+
+#[cfg(feature = "tls")]
+impl Default for HttpTlsOpts {
+    fn default() -> Self {
+        Self {
+            key: PathBuf::from("/etc/ukvm/key.pem"),
+            cert: PathBuf::from("/etc/ukvm/cert.pem"),
+            auth: None,
+        }
+    }
+}
+
+/// HTTP service binding
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", content = "addr", rename_all = "lowercase")]
+pub enum HttpAddr {
+    /// Network socket
+    #[serde(rename = "tcp")]
+    Addr(SocketAddr),
+
+    #[serde(rename = "unix")]
+    /// Unix socket
+    Path(PathBuf),
+}
+
+impl Default for HttpAddr {
+    fn default() -> Self {
+        Self::Addr(SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            8080,
+        ))
+    }
+}
+
+impl FromStr for HttpAddr {
+    type Err = String;
+
+    fn from_str(uri: &str) -> Result<Self, Self::Err> {
+        let (proto, res) = uri
+            .split_once("://")
+            .ok_or_else(|| format!("The '<protocol>://<resource>' expected but given '{uri}'"))?;
+
+        match proto {
+            "unix" => Ok(Self::Path(res.into())),
+            "tcp" | "" => socket_addr_parse(res, 8080).map(Self::Addr),
+            _ => Err(format!("Unknown HTTP protocol: {proto}"))?,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "$")]

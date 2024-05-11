@@ -1,4 +1,4 @@
-use crate::{Bind, Buttons, ButtonsConfig, Leds, LedsConfig, Result, log};
+use crate::{log, BindAddr, Buttons, ButtonsConfig, Leds, LedsConfig, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     path::Path,
@@ -16,7 +16,7 @@ use crate::{Video, VideoConfig};
 pub struct ServerConfig {
     /// Service bindings
     #[serde(default)]
-    pub binds: Vec<Bind>,
+    pub binds: Vec<BindAddr>,
 
     /// GPIO buttons
     #[serde(default)]

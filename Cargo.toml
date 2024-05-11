@@ -93,9 +93,10 @@ features = ["serde"]
 optional = true
 
 [features]
-default = ["http", "hid", "video"]
+default = ["dbus", "http", "tls", "hid", "video"]
 dbus = ["zbus"]
 http = []
+tls = []
 web = ["http"]
 hid = ["hidg-core"]
 video = []

@@ -1,26 +1,11 @@
-use crate::{log, ButtonId, Error, LedId, Result, Server};
-use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use crate::{log, ButtonId, DBusAddr, Error, LedId, Result, Server};
+use std::sync::Arc;
 use tokio::{spawn, sync::Semaphore};
 use zbus::{dbus_interface, Address, ConnectionBuilder, SignalContext};
 
-/// DBus service binding
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "bind", rename_all = "lowercase")]
-pub enum DBusBind {
-    /// System bus
-    System,
-
-    /// Session bus
-    Session,
-
-    /// TCP socket address
-    #[serde(rename = "tcp")]
-    Addr(SocketAddr),
-
-    #[serde(rename = "unix")]
-    /// Unix socket path
-    Path(PathBuf),
+struct Button {
+    id: ButtonId,
+    server: Server,
 }
 
 impl zbus::DBusError for Error {
@@ -35,11 +20,6 @@ impl zbus::DBusError for Error {
     fn description(&self) -> Option<&str> {
         Some(self.as_ref())
     }
-}
-
-struct Button {
-    id: ButtonId,
-    server: Server,
 }
 
 #[dbus_interface(name = "org.ukvm.Button")]
@@ -94,13 +74,13 @@ impl Led {
 }
 
 impl Server {
-    pub async fn spawn_dbus(&self, bind: &DBusBind, stop: &Arc<Semaphore>) -> Result<()> {
+    pub async fn spawn_dbus(&self, addr: &DBusAddr, stop: &Arc<Semaphore>) -> Result<()> {
         let stop = stop.clone();
 
-        let builder = match bind {
-            DBusBind::System => ConnectionBuilder::system()?,
-            DBusBind::Session => ConnectionBuilder::session()?,
-            DBusBind::Addr(addr) => ConnectionBuilder::address(
+        let builder = match addr {
+            DBusAddr::System => ConnectionBuilder::system()?,
+            DBusAddr::Session => ConnectionBuilder::session()?,
+            DBusAddr::Addr(addr) => ConnectionBuilder::address(
                 format!(
                     "tcp:host={},port={},family=ipv{}",
                     addr.ip(),
@@ -109,7 +89,7 @@ impl Server {
                 )
                 .parse::<Address>()?,
             )?,
-            DBusBind::Path(path) => ConnectionBuilder::address(
+            DBusAddr::Path(path) => ConnectionBuilder::address(
                 format!("unix:path={}", path.display()).parse::<Address>()?,
             )?,
         };

@@ -18,7 +18,7 @@ mod video;
 
 pub use tracing as log;
 
-pub use args::{Args, Bind};
+pub use args::Args;
 pub use buttons::{Buttons, ButtonsConfig};
 pub use leds::{Leds, LedsConfig};
 pub use server::{Server, ServerConfig, ServerRef};
@@ -27,11 +27,14 @@ pub use ukvm_core::{ButtonId, LedId};
 #[cfg(feature = "http")]
 pub use ukvm_core::{SocketInput, SocketOutput};
 
-#[cfg(feature = "http")]
-pub use http::{HttpBind, HttpBindWay};
+#[cfg(any(feature = "dbus", feature = "http"))]
+pub use ukvm_core::BindAddr;
 
 #[cfg(feature = "dbus")]
-pub use dbus::DBusBind;
+pub use ukvm_core::DBusAddr;
+
+#[cfg(feature = "http")]
+pub use ukvm_core::{HttpAddr, HttpBindAddr};
 
 #[cfg(feature = "hid")]
 pub use hid::{Hid, HidConfig};
@@ -50,7 +53,7 @@ use tokio::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::new();
+    let args = Args::from_cmdline();
 
     #[cfg(feature = "tracing-subscriber")]
     if let Some(log) = args.log {
@@ -106,13 +109,13 @@ async fn main() -> Result<()> {
         for bind in args.bind.iter().chain(&config.binds) {
             match bind {
                 #[cfg(feature = "http")]
-                Bind::Http(bind) => {
+                BindAddr::Http(bind) => {
                     spawns += 1;
                     server.spawn_http(bind, &stop).await?;
                 }
 
                 #[cfg(feature = "dbus")]
-                Bind::DBus(bind) => {
+                BindAddr::DBus(bind) => {
                     spawns += 1;
                     server.spawn_dbus(bind, &stop).await?;
                 }
