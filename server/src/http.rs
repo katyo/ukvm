@@ -265,10 +265,10 @@ impl Server {
             .collect();
 
         #[cfg(feature = "hid")]
-        let keyboard = self.hid().keyboard().map(|keyboard| keyboard.get_state());
+        let keyboard = self.hid().and_then(|hid| hid.keyboard()).map(|keyboard| keyboard.get_state());
 
         #[cfg(feature = "hid")]
-        let mouse = self.hid().mouse().map(|mouse| mouse.get_state());
+        let mouse = self.hid().and_then(|hid| hid.mouse()).map(|mouse| mouse.get_state());
 
         SocketOutput::State {
             leds,
@@ -305,7 +305,7 @@ impl Server {
         let events = {
             let mut events = Box::pin(events) as Pin<Box<dyn Stream<Item = SocketOutput> + Send>>;
 
-            if let Some(keyboard) = self.hid().keyboard() {
+            if let Some(keyboard) = self.hid().and_then(|hid| hid.keyboard()) {
                 let key_events = ReceiverStream::new(keyboard.watch_keys()).map(|change| {
                     SocketOutput::KeyboardKey {
                         key: *change,
@@ -325,7 +325,7 @@ impl Server {
                 events = Box::pin(select(events, keyboard_events))
             }
 
-            if let Some(mouse) = self.hid().mouse() {
+            if let Some(mouse) = self.hid().and_then(|hid| hid.mouse()) {
                 use crate::hid::MouseStateChange;
 
                 let mouse_events =
@@ -353,10 +353,14 @@ impl Server {
         let events = {
             let events = Box::pin(events) as Pin<Box<dyn Stream<Item = SocketOutput> + Send>>;
 
-            let video_events = WatchStream::new(self.video().frames())
-                .map(|frame| SocketOutput::VideoFrame { frame });
+            if let Some(video) = self.video() {
+                let video_events = WatchStream::new(video.frames())
+                    .map(|frame| SocketOutput::VideoFrame { frame });
 
-            Box::pin(select(events, video_events))
+                Box::pin(select(events, video_events))
+            } else {
+                events
+            }
         };
 
         events
@@ -373,7 +377,7 @@ impl Server {
             #[cfg(feature = "hid")]
             SocketInput::KeyboardKey { key, state } => {
                 self.hid()
-                    .keyboard()
+                    .and_then(|hid| hid.keyboard())
                     .ok_or("Keyboard disabled")?
                     .change_key(crate::hid::KeyStateChange::new(key, state))
                     .await?;
@@ -381,7 +385,7 @@ impl Server {
             #[cfg(feature = "hid")]
             SocketInput::MouseButton { button, state } => {
                 self.hid()
-                    .mouse()
+                    .and_then(|hid| hid.mouse())
                     .ok_or("Mouse disabled")?
                     .change_state(crate::hid::MouseStateChange::Button(
                         crate::hid::ButtonStateChange::new(button, state),
@@ -391,7 +395,7 @@ impl Server {
             #[cfg(feature = "hid")]
             SocketInput::MousePointer { x, y } => {
                 self.hid()
-                    .mouse()
+                    .and_then(|hid| hid.mouse())
                     .ok_or("Mouse disabled")?
                     .change_state(crate::hid::MouseStateChange::Pointer(
                         crate::hid::PointerValueChange::absolute((x, y)),
@@ -401,7 +405,7 @@ impl Server {
             #[cfg(feature = "hid")]
             SocketInput::MouseWheel { wheel } => {
                 self.hid()
-                    .mouse()
+                    .and_then(|hid| hid.mouse())
                     .ok_or("Mouse disabled")?
                     .change_state(crate::hid::MouseStateChange::Wheel(
                         crate::hid::WheelValueChange::absolute(wheel),

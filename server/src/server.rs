@@ -1,4 +1,4 @@
-use crate::{Bind, Buttons, ButtonsConfig, Leds, LedsConfig, Result};
+use crate::{Bind, Buttons, ButtonsConfig, Leds, LedsConfig, Result, log};
 use serde::{Deserialize, Serialize};
 use std::{
     path::Path,
@@ -29,12 +29,12 @@ pub struct ServerConfig {
     /// HID devices
     #[cfg(feature = "hid")]
     #[serde(default)]
-    pub hid: HidConfig,
+    pub hid: Option<HidConfig>,
 
     /// Video device
     #[cfg(feature = "video")]
     #[serde(default)]
-    pub video: VideoConfig,
+    pub video: Option<VideoConfig>,
 }
 
 impl ServerConfig {
@@ -58,11 +58,11 @@ struct ServerState {
 
     /// HID devices
     #[cfg(feature = "hid")]
-    hid: Hid,
+    hid: Option<Hid>,
 
     /// Video device
     #[cfg(feature = "video")]
-    video: Video,
+    video: Option<Video>,
 }
 
 /// Server instance
@@ -96,10 +96,22 @@ impl Server {
         let leds = Leds::new(&config.leds).await?;
 
         #[cfg(feature = "hid")]
-        let hid = Hid::new(&config.hid).await?;
+        let hid = if let Some(hid) = &config.hid {
+            log::info!("Setup HID input");
+            Some(Hid::new(hid).await?)
+        } else {
+            log::info!("No HID input");
+            None
+        };
 
         #[cfg(feature = "video")]
-        let video = Video::new(&config.video).await?;
+        let video = if let Some(video) = &config.video {
+            log::info!("Setup video capturing");
+            Some(Video::new(video).await?)
+        } else {
+            log::info!("No video capturing");
+            None
+        };
 
         Ok(Self {
             state: Arc::new(ServerState {
@@ -132,13 +144,13 @@ impl Server {
 
     /// Get HID devices
     #[cfg(feature = "hid")]
-    pub fn hid(&self) -> &Hid {
-        &self.state.hid
+    pub fn hid(&self) -> Option<&Hid> {
+        self.state.hid.as_ref()
     }
 
     /// Get video device
     #[cfg(feature = "video")]
-    pub fn video(&self) -> &Video {
-        &self.state.video
+    pub fn video(&self) -> Option<&Video> {
+        self.state.video.as_ref()
     }
 }
