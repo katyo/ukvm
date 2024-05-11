@@ -1,88 +1,58 @@
 /// Unified result type
 pub type Result<T> = std::result::Result<T, Error>;
 
-macro_rules! error_impl {
-    (
-        $(#[$($meta:meta)*])*
-            $type:ident {
-                $(
-                    $(#[$($variant_meta:meta)*])*
-                        $variant_name:ident ( $variant_type:ty ) { $($variant_impl:ident)* },
-                )+
-            }
-    ) => {
-        $(#[$($meta)*])*
-        pub enum $type {
-            $(
-                $(#[$($variant_meta)*])*
-                $variant_name($variant_type),
-            )+
-        }
-
-        impl std::error::Error for $type {}
-
-        impl std::fmt::Display for $type {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                match self {
-                    $(
-                        $(#[$($variant_meta)*])*
-                        Self::$variant_name(error) =>
-                            write!(f, concat!(stringify!($variant_name), "Error: {}"), error),
-                    )*
-                }
-            }
-        }
-
-        impl AsRef<str> for $type {
-            fn as_ref(&self) -> &str {
-                match self {
-                    $(
-                        $(#[$($variant_meta)*])*
-                            Self::$variant_name(_) =>
-                            concat!(stringify!($variant_name), "Error"),
-                    )*
-                }
-            }
-        }
-
-        $(
-            error_impl!(@ $($variant_impl)* ( $type ) ( $(#[$($variant_meta)*])* ) $variant_name ( $variant_type ));
-        )*
-    };
-
-    (@ ( $type:ident ) ( $(#[$($variant_meta:meta)*])* ) $variant_name:ident ( $variant_type:ty ) ) => {};
-
-    (@ From ( $type:ident ) ( $(#[$($variant_meta:meta)*])* ) $variant_name:ident ( $variant_type:ty ) ) => {
-        $(#[$($variant_meta)*])*
-        impl From<$variant_type> for $type {
-            fn from(error: $variant_type) -> Self {
-                Self::$variant_name(error)
-            }
-        }
-    };
+/// Unified error type
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Address error: {0}")]
+    Addr(#[from] std::net::AddrParseError),
+    #[error("UTF-8 error: {0}")]
+    Utf8(#[from] core::str::Utf8Error),
+    #[error("Integer error: {0}")]
+    Int(#[from] core::num::ParseIntError),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[cfg(feature = "postcard")]
+    #[error("Postcard error: {0}")]
+    Postcard(#[from] postcard::Error),
+    #[error("TOML error: {0}")]
+    Toml(#[from] toml::de::Error),
+    #[cfg(feature = "zbus")]
+    #[error("DBus error: {0}")]
+    DBus(#[from] zbus::Error),
+    #[error("Other error: {0}")]
+    Other(String),
 }
 
-error_impl! {
-    /// Unified error type
-    #[derive(Debug)]
-    Error {
-        Io(std::io::Error) { From },
-        Addr(std::net::AddrParseError) { From },
-        Utf8(core::str::Utf8Error) { From },
-        Num(std::num::ParseIntError) { From },
-        Json(serde_json::Error) { From },
-        #[cfg(feature = "postcard")]
-        Postcard(postcard::Error) { From },
-        Toml(toml::de::Error) { From },
-        #[cfg(feature = "zbus")]
-        DBus(zbus::Error) { From },
-        Other(String) { From },
+impl AsRef<str> for Error {
+    fn as_ref(&self) -> &str {
+        match self {
+            Error::Io(_) => "IO error",
+            Error::Addr(_) => "Address error",
+            Error::Utf8(_) => "UTF-8 error",
+            Error::Int(_) => "Integer error",
+            Error::Json(_) => "JSON error",
+            #[cfg(feature = "postcard")]
+            Error::Postcard(_) => "Postcard error",
+            Error::Toml(_) => "TOML error",
+            #[cfg(feature = "zbus")]
+            Error::DBus(_) => "DBus error",
+            Error::Other(_) => "Other error",
+        }
     }
 }
 
 impl From<&str> for Error {
     fn from(error: &str) -> Self {
         Self::Other(error.into())
+    }
+}
+
+impl From<String> for Error {
+    fn from(error: String) -> Self {
+        Self::Other(error)
     }
 }
 

@@ -2152,6 +2152,7 @@ dependencies = [
  "serde",
  "serde_json",
  "slab",
+ "thiserror",
  "tokio",
  "tokio-gpiod",
  "tokio-hidg",

@@ -12,6 +12,7 @@ repository = "https://github.com/katyo/ukvm"
 edition = "2021"
 
 [dependencies]
+thiserror.workspace = true
 educe.workspace = true
 slab.workspace = true
 serde.workspace = true

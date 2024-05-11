@@ -16,6 +16,7 @@ members = ["server"]
 # "iced_ui"]
 
 [workspace.dependencies]
+thiserror = "1"
 educe = "0.4"
 slab = "0.4"
 argp = "0.3"
