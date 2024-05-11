@@ -81,10 +81,7 @@ impl ServerRef {
     /// Try to get server instance by weak reference
     pub fn upgrade(&self) -> Result<Server> {
         Ok(Server {
-            state: self
-                .state
-                .upgrade()
-                .ok_or_else(|| "Seems server is out of life")?,
+            state: self.state.upgrade().ok_or("Seems server is out of life")?,
         })
     }
 }

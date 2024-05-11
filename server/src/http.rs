@@ -164,7 +164,7 @@ impl Server {
                 }
 
                 let future = http_server.serve_incoming_with_graceful_shutdown(
-                    UnixListenerStream::new(UnixListener::bind(&path)?),
+                    UnixListenerStream::new(UnixListener::bind(path)?),
                     async move {
                         log::debug!("Await signal to stop");
                         let lock = stop.acquire().await;

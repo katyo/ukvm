@@ -8,6 +8,10 @@ use crate::BindAddr;
 /// Micro KVM server
 #[derive(Debug, argp::FromArgs)]
 pub struct Args {
+    /// Show version and exit
+    #[argp(switch, short = 'V')]
+    pub version: bool,
+
     /// Run server
     #[argp(switch, short = 'r')]
     pub run: bool,

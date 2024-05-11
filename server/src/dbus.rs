@@ -37,12 +37,11 @@ impl Button {
 
     /// Change state
     fn set_state(&self, state: bool) -> Result<()> {
-        Ok(self
-            .server
+        self.server
             .buttons()
             .get(&self.id)
             .unwrap()
-            .set_state(state)?)
+            .set_state(state)
     }
 
     /// State changed
@@ -125,7 +124,7 @@ impl Server {
                 .interface::<_, Button>(format!("/org/ukvm/button/{}", id))
                 .await?;
             spawn(async move {
-                while let Ok(_) = watch.changed().await {
+                while watch.changed().await.is_ok() {
                     let state = *watch.borrow();
                     let s_ctx = reference.signal_context();
                     if let Err(error) = Button::state_changed(s_ctx, state).await {
@@ -142,7 +141,7 @@ impl Server {
                 .interface::<_, Led>(format!("/org/ukvm/led/{}", id))
                 .await?;
             spawn(async move {
-                while let Ok(_) = watch.changed().await {
+                while watch.changed().await.is_ok() {
                     let state = *watch.borrow();
                     let s_ctx = reference.signal_context();
                     if let Err(error) = Led::state_changed(s_ctx, state).await {

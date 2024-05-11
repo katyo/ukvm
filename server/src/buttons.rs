@@ -52,7 +52,7 @@ impl Button {
             async move {
                 log::debug!("Initialize receiving events");
 
-                while let Ok(_) = state_receiver.changed().await {
+                while state_receiver.changed().await.is_ok() {
                     // Button state changed
                     let state = *state_receiver.borrow();
                     if let Err(error) = outputs.set_values([state]).await {

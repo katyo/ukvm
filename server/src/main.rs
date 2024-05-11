@@ -55,6 +55,15 @@ use tokio::{
 async fn main() -> Result<()> {
     let args = Args::from_cmdline();
 
+    if args.version {
+        println!(
+            "{name} {version}",
+            name = env!("CARGO_PKG_NAME"),
+            version = env!("CARGO_PKG_VERSION")
+        );
+        return Ok(());
+    }
+
     #[cfg(feature = "tracing-subscriber")]
     if let Some(log) = args.log {
         use tracing_subscriber::prelude::*;

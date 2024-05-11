@@ -228,7 +228,7 @@ impl HidIo<Mouse> {
                     let new_report = *input_receiver.borrow();
                     for change in &new_report - &old_report {
                         log::trace!("Mouse state change {:?}", change);
-                        if let Err(error) = event_sender.send(change.into()).await {
+                        if let Err(error) = event_sender.send(change).await {
                             log::error!("Error when sending mouse state change: {}", error);
                             break;
                         }
