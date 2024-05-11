@@ -1,9 +1,8 @@
+#[cfg(any(feature = "dbus", feature = "http"))]
+use crate::BindAddr;
 use std::{path::PathBuf, str::FromStr};
 #[cfg(feature = "tracing-subscriber")]
 use tracing_subscriber::EnvFilter;
-
-#[cfg(any(feature = "dbus", feature = "http"))]
-use crate::BindAddr;
 
 /// Micro KVM server
 #[derive(Debug, argp::FromArgs)]

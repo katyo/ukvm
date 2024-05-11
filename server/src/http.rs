@@ -1,15 +1,15 @@
-use crate::{log, Error, HttpAddr, HttpBindAddr, Result, Server, SocketInput, SocketOutput};
+use crate::{
+    log, Error, GracefulShutdown, HttpAddr, HttpBindAddr, Result, Server, SocketInput, SocketOutput,
+};
 use core::pin::Pin;
 use futures_util::{
     sink::SinkExt,
     stream::{once, select, select_all, Stream, StreamExt},
 };
-use std::sync::Arc;
 use tokio::{
     fs::{metadata, remove_file},
     net::UnixListener,
     spawn,
-    sync::Semaphore,
 };
 use tokio_stream::wrappers::{ReceiverStream, UnixListenerStream, WatchStream};
 
@@ -22,10 +22,10 @@ use postcard::{from_bytes as from_slice, to_stdvec as to_vec};
 impl warp::reject::Reject for Error {}
 
 impl Server {
-    pub async fn spawn_http(&self, addr: &HttpBindAddr, stop: &Arc<Semaphore>) -> Result<()> {
+    pub async fn spawn_http(&self, addr: &HttpBindAddr, gs: &GracefulShutdown) -> Result<()> {
         use warp::Filter;
 
-        let stop = stop.clone();
+        let gs = gs.clone();
 
         let server_ref = self.downgrade();
         let server = warp::any().and_then(move || {
@@ -110,6 +110,8 @@ impl Server {
 
         match &addr.addr {
             HttpAddr::Addr(addr) => {
+                let addr = *addr;
+
                 log::debug!("Starting {addr}");
 
                 #[cfg(feature = "tls")]
@@ -122,33 +124,27 @@ impl Server {
                     };
 
                     let (addr, future) =
-                        http_server.bind_with_graceful_shutdown(*addr, async move {
-                            log::debug!("Await signal to stop");
-                            let lock = stop.acquire().await;
-                            log::debug!("Received stop signal");
-                            drop(lock);
+                        http_server.bind_with_graceful_shutdown(addr, async move {
+                            let _ = gs.shutdowned().await;
+                            log::info!("Stopped {addr}");
                         });
 
                     spawn(async move {
                         log::info!("Started {addr}");
                         future.await;
-                        log::info!("Stopped {addr}");
                     });
 
                     return Ok(());
                 }
 
-                let (addr, future) = http_server.bind_with_graceful_shutdown(*addr, async move {
-                    log::debug!("Await signal to stop");
-                    let lock = stop.acquire().await;
-                    log::debug!("Received stop signal");
-                    drop(lock);
+                let (addr, future) = http_server.bind_with_graceful_shutdown(addr, async move {
+                    let _ = gs.shutdowned().await;
+                    log::info!("Stopped {addr}");
                 });
 
                 spawn(async move {
                     log::info!("Started {addr}");
                     future.await;
-                    log::info!("Stopped {addr}");
                 });
             }
             HttpAddr::Path(path) => {
@@ -165,22 +161,23 @@ impl Server {
 
                 let future = http_server.serve_incoming_with_graceful_shutdown(
                     UnixListenerStream::new(UnixListener::bind(path)?),
-                    async move {
-                        log::debug!("Await signal to stop");
-                        let lock = stop.acquire().await;
-                        log::debug!("Stopped");
-                        drop(lock);
+                    {
+                        let path = path.clone();
+                        async move {
+                            let _ = gs.shutdowned().await;
+                            // Don't forget remove socket file
+                            let _ = remove_file(&path).await;
+                            log::info!("Stopped {}", path.display());
+                        }
                     },
                 );
 
-                let path = path.clone();
-
-                spawn(async move {
-                    log::info!("Started {}", path.display());
-                    future.await;
-                    log::info!("Stopped {}", path.display());
-                    // Don't forget remove socket file
-                    let _ = remove_file(&path).await;
+                spawn({
+                    let path = path.clone();
+                    async move {
+                        log::info!("Started {}", path.display());
+                        future.await;
+                    }
                 });
             }
         }

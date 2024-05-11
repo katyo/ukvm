@@ -1,6 +1,5 @@
-use crate::{log, ButtonId, DBusAddr, Error, LedId, Result, Server};
-use std::sync::Arc;
-use tokio::{spawn, sync::Semaphore};
+use crate::{log, ButtonId, DBusAddr, Error, GracefulShutdown, LedId, Result, Server};
+use tokio::spawn;
 use zbus::{dbus_interface, Address, ConnectionBuilder, SignalContext};
 
 struct Button {
@@ -73,8 +72,8 @@ impl Led {
 }
 
 impl Server {
-    pub async fn spawn_dbus(&self, addr: &DBusAddr, stop: &Arc<Semaphore>) -> Result<()> {
-        let stop = stop.clone();
+    pub async fn spawn_dbus(&self, addr: &DBusAddr, gs: &GracefulShutdown) -> Result<()> {
+        let gs = gs.clone();
 
         let builder = match addr {
             DBusAddr::System => ConnectionBuilder::system()?,
@@ -152,13 +151,9 @@ impl Server {
         }
 
         spawn(async move {
-            log::debug!("Await signal to stop");
-            let lock = stop.acquire().await;
-            log::debug!("Received stop signal");
-
+            let _ = gs.shutdowned().await;
             drop(connection);
             log::info!("Stopped");
-            drop(lock);
         });
 
         log::info!("Started");

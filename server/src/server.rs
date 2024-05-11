@@ -4,12 +4,46 @@ use std::{
     path::Path,
     sync::{Arc, Weak},
 };
+use tokio::sync::{Semaphore, SemaphorePermit};
 
 #[cfg(feature = "hid")]
 use crate::{Hid, HidConfig};
 
 #[cfg(feature = "video")]
 use crate::{Video, VideoConfig};
+
+#[derive(Clone, Debug)]
+pub struct GracefulShutdown {
+    semaphore: Arc<Semaphore>,
+}
+
+impl Default for GracefulShutdown {
+    fn default() -> Self {
+        Self {
+            semaphore: Arc::new(Semaphore::new(0)),
+        }
+    }
+}
+
+impl GracefulShutdown {
+    pub async fn shutdown(&self) {
+        let spawns = Arc::strong_count(&self.semaphore);
+
+        log::debug!("Send shutdown signal");
+        self.semaphore.add_permits(spawns);
+
+        log::debug!("Await shutdown finishing");
+        let _ = self.semaphore.acquire_many(spawns as _).await.unwrap();
+    }
+
+    pub async fn shutdowned(&self) -> SemaphorePermit {
+        log::debug!("Await shutdown signal");
+        let lock = self.semaphore.acquire().await.unwrap();
+
+        log::debug!("Do shutdown");
+        lock
+    }
+}
 
 /// Server configuration
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -120,6 +154,28 @@ impl Server {
                 video,
             }),
         })
+    }
+
+    pub async fn spawn(
+        &self,
+        binds: impl IntoIterator<Item = &BindAddr>,
+        gs: &GracefulShutdown,
+    ) -> Result<()> {
+        for bind in binds.into_iter() {
+            match bind {
+                #[cfg(feature = "http")]
+                BindAddr::Http(bind) => {
+                    self.spawn_http(bind, gs).await?;
+                }
+
+                #[cfg(feature = "dbus")]
+                BindAddr::DBus(bind) => {
+                    self.spawn_dbus(bind, gs).await?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Get weak ref to server

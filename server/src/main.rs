@@ -1,54 +1,10 @@
-mod args;
-mod buttons;
-mod leds;
-mod result;
-mod server;
-
-#[cfg(feature = "http")]
-mod http;
-
-#[cfg(feature = "dbus")]
-mod dbus;
-
-#[cfg(feature = "hid")]
-mod hid;
-
-#[cfg(feature = "video")]
-mod video;
+use ukvm::{Args, GracefulShutdown, Result, Server, ServerConfig};
 
 pub use tracing as log;
 
-pub use args::Args;
-pub use buttons::{Buttons, ButtonsConfig};
-pub use leds::{Leds, LedsConfig};
-pub use server::{Server, ServerConfig, ServerRef};
-pub use ukvm_core::{ButtonId, LedId};
-
-#[cfg(feature = "http")]
-pub use ukvm_core::{SocketInput, SocketOutput};
-
-#[cfg(any(feature = "dbus", feature = "http"))]
-pub use ukvm_core::BindAddr;
-
-#[cfg(feature = "dbus")]
-pub use ukvm_core::DBusAddr;
-
-#[cfg(feature = "http")]
-pub use ukvm_core::{HttpAddr, HttpBindAddr};
-
-#[cfg(feature = "hid")]
-pub use hid::{Hid, HidConfig};
-
-#[cfg(feature = "video")]
-pub use video::{Video, VideoConfig};
-
-pub use result::{Error, Result};
-
-use std::sync::Arc;
 use tokio::{
     select,
     signal::unix::{signal, SignalKind},
-    sync::Semaphore,
 };
 
 #[tokio::main]
@@ -106,8 +62,7 @@ async fn main() -> Result<()> {
             break;
         }
 
-        let mut spawns: u32 = 0;
-        let stop = Arc::new(Semaphore::new(0));
+        let gs = GracefulShutdown::default();
 
         // create server instance
         let server = Server::new(&config).await?;
@@ -115,21 +70,9 @@ async fn main() -> Result<()> {
         log::info!("Starting");
 
         // start server interfaces
-        for bind in args.bind.iter().chain(&config.binds) {
-            match bind {
-                #[cfg(feature = "http")]
-                BindAddr::Http(bind) => {
-                    spawns += 1;
-                    server.spawn_http(bind, &stop).await?;
-                }
-
-                #[cfg(feature = "dbus")]
-                BindAddr::DBus(bind) => {
-                    spawns += 1;
-                    server.spawn_dbus(bind, &stop).await?;
-                }
-            }
-        }
+        server
+            .spawn(args.bind.iter().chain(&config.binds), &gs)
+            .await?;
 
         log::info!("Started");
 
@@ -151,10 +94,7 @@ async fn main() -> Result<()> {
         }
 
         // stop server interfaces
-        stop.add_permits(spawns as _);
-
-        // await while interfaces stop
-        let _ = stop.acquire_many(spawns).await;
+        gs.shutdown().await;
     }
 
     log::info!("Bye");
