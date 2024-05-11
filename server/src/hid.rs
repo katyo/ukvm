@@ -8,7 +8,7 @@ use tokio::{
 };
 
 pub use hidg::MouseInputChange as MouseStateChange;
-pub use ukvm_core::hid::{Button, Key, KeyboardState, Led, MouseInput, MouseState};
+pub use ukvm_core::hid::{Button, Key, KeyboardState, Led, MouseState};
 
 /// Keyboard key state change event
 pub type KeyStateChange = StateChange<Key>;
@@ -46,7 +46,7 @@ impl<C: Class> HidIo<C> {
         C::Input: AsRef<[u8]> + Copy + Send + Sync + 'static,
         C::Output: AsMut<[u8]> + Copy + Send + Sync + core::fmt::Debug + 'static,
     {
-        let mut device = Device::<C>::open(path).await?;
+        let mut device = Device::<C>::open(path.as_ref()).await?;
 
         let (input_sender, mut input_receiver) = watch::channel(class.input());
         let (output_sender, output_receiver) = watch::channel(class.output());

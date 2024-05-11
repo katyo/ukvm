@@ -23,15 +23,20 @@ tokio-stream = "0.1"
 serde_json = "1"
 toml = "0.7"
 parse-display = "0.8"
-hidg-core = "0.1"
 lovely_env_logger = "0.6"
 systemd-journal-logger = "0.7"
-ukvm-core.path = "."
-ukvm-server.path = "server"
+hidg-core = "0.2"
 
 [workspace.dependencies.log]
 version = "0.4"
 features = ["max_level_trace", "release_max_level_off"]
+[workspace.dependencies.ukvm-core]
+path = "."
+version = "0.1"
+
+[workspace.dependencies.ukvm-server]
+path = "server"
+version = "0.1"
 
 [workspace.dependencies.clap]
 version = "4"
@@ -56,11 +61,11 @@ default-features = false
 
 [workspace.dependencies.gpiod]
 package = "tokio-gpiod"
-version = "0.2"
+version = "0.3"
 
 [workspace.dependencies.hidg]
 package = "tokio-hidg"
-version = "0.1"
+version = "0.2"
 
 [workspace.dependencies.linux-video]
 package = "tokio-linux-video"
