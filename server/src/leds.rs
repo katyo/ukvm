@@ -1,4 +1,4 @@
-use crate::{LedId, Result};
+use crate::{log, LedId, Result};
 use gpiod::{Active, Bias, Chip, Edge, EdgeDetect, LineId, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

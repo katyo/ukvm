@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{log, Result};
 use linux_video::{types::*, Device, Stream};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

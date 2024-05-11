@@ -16,6 +16,8 @@ mod hid;
 #[cfg(feature = "video")]
 mod video;
 
+pub use tracing as log;
+
 pub use args::{Args, Bind};
 pub use buttons::{Buttons, ButtonsConfig};
 pub use leds::{Leds, LedsConfig};
@@ -48,17 +50,34 @@ use tokio::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    #[cfg(feature = "lovely_env_logger")]
-    lovely_env_logger::init_default();
+    let args = Args::new();
 
-    #[cfg(feature = "systemd-journal-logger")]
-    systemd_journal_logger::init()?;
+    #[cfg(feature = "tracing-subscriber")]
+    if let Some(log) = args.log {
+        use tracing_subscriber::prelude::*;
 
-    //log::set_max_level(log::LevelFilter::Info);
+        let registry = tracing_subscriber::registry().with(log);
 
-    let args: Args = clap::Parser::parse();
+        #[cfg(all(feature = "stderr", feature = "journal"))]
+        let registry = registry.with(if !args.journal {
+            Some(tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr))
+        } else {
+            None
+        });
 
-    log::debug!("Args: {:#?}", args);
+        #[cfg(all(feature = "stderr", not(feature = "journal")))]
+        let registry =
+            registry.with(tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr));
+
+        #[cfg(feature = "journal")]
+        let registry = registry.with(if args.journal {
+            Some(tracing_journald::Layer::new()?)
+        } else {
+            None
+        });
+
+        registry.init();
+    }
 
     let mut run = true;
 

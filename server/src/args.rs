@@ -5,6 +5,8 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
+#[cfg(feature = "tracing-subscriber")]
+use tracing_subscriber::EnvFilter;
 
 #[cfg(feature = "http")]
 use crate::{HttpBind, HttpBindWay};
@@ -12,21 +14,47 @@ use crate::{HttpBind, HttpBindWay};
 #[cfg(feature = "dbus")]
 use crate::DBusBind;
 
-#[derive(Debug, clap::Parser)]
-#[clap(author, version, about)]
+/// Micro KVM server
+#[derive(Debug, argp::FromArgs)]
 pub struct Args {
     /// Run server
-    #[clap(short, long)]
+    #[argp(switch, short = 'r')]
     pub run: bool,
 
     #[cfg(any(feature = "http", feature = "dbus"))]
     /// Service bindings
-    #[clap(short, long, value_parser)]
+    #[argp(option, from_str_fn(Args::parse_bind))]
     pub bind: Vec<Bind>,
 
     /// Config file path
-    #[clap(short, long, value_parser, default_value = "/etc/ukvm.toml")]
+    #[argp(option, short = 'c', arg_name = "path", default = "\"/etc/ukvm.toml\".into()")]
     pub config: PathBuf,
+
+    /// Logging filter
+    #[cfg(feature = "tracing-subscriber")]
+    #[argp(option, short = 'l', from_str_fn(Args::parse_env_filter))]
+    pub log: Option<EnvFilter>,
+
+    /// Logging to journald instead of stderr
+    #[cfg(feature = "tracing-subscriber")]
+    #[argp(switch, short = 'j')]
+    pub journal: bool,
+}
+
+impl Args {
+    /// Create args from command-line
+    pub fn new() -> Self {
+        argp::parse_args_or_exit(argp::DEFAULT)
+    }
+
+    #[cfg(feature = "tracing-subscriber")]
+    fn parse_env_filter(val: &str) -> core::result::Result<EnvFilter, String> {
+        Ok(EnvFilter::new(val))
+    }
+
+    fn parse_bind(val: &str) -> core::result::Result<Bind, String> {
+        Bind::from_str(val).map_err(|err| err.to_string())
+    }
 }
 
 #[cfg(any(feature = "http", feature = "dbus"))]

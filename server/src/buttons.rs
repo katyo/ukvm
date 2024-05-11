@@ -1,4 +1,4 @@
-use crate::{ButtonId, Result};
+use crate::{log, ButtonId, Result};
 use gpiod::{Active, Bias, Chip, Drive, LineId, Options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

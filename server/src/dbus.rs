@@ -1,4 +1,4 @@
-use crate::{ButtonId, Error, LedId, Result, Server};
+use crate::{log, ButtonId, Error, LedId, Result, Server};
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::{spawn, sync::Semaphore};

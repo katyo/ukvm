@@ -18,19 +18,19 @@ serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 parse-display.workspace = true
-clap.workspace = true
-log.workspace = true
+argp.workspace = true
+tracing.workspace = true
 ukvm-core.workspace = true
 
 [dependencies.postcard]
 workspace = true
 optional = true
 
-[dependencies.lovely_env_logger]
+[dependencies.tracing-subscriber]
 workspace = true
 optional = true
 
-[dependencies.systemd-journal-logger]
+[target.'cfg(unix)'.dependencies.tracing-journald]
 workspace = true
 optional = true
 
@@ -70,13 +70,13 @@ features = ["thread-safe", "serde"]
 optional = true
 
 [features]
-default = ["postcard", "http", "tls", "dbus", "logs", "hid", "video"] #, "web"]
+default = ["postcard", "http", "tls", "dbus", "stderr", "journal", "hid", "video"] #, "web"]
 dbus = ["ukvm-core/dbus", "zbus"]
 http = ["ukvm-core/http", "warp"]
 comp = ["warp/compression"]
 tls = ["warp/tls"]
-logs = ["lovely_env_logger"]
-logs2 = ["systemd-journal-logger"]
+stderr = ["tracing-subscriber"]
+journal = ["tracing-subscriber", "tracing-journald"]
 web = ["http"]
 hid = ["ukvm-core/hid", "hidg"]
 video = ["ukvm-core/video", "linux-video"]

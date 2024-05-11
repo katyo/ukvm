@@ -1,4 +1,4 @@
-use crate::{Error, Result, Server, SocketInput, SocketOutput};
+use crate::{log, Error, Result, Server, SocketInput, SocketOutput};
 use core::pin::Pin;
 use futures_util::{
     sink::SinkExt,

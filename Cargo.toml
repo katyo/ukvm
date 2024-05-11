@@ -13,23 +13,31 @@ edition = "2021"
 
 [workspace]
 members = ["server"]
+# "iced_ui"]
 
 [workspace.dependencies]
 educe = "0.4"
 slab = "0.4"
+argp = "0.3"
 futures-util = "0.3"
 tokio = "1"
 tokio-stream = "0.1"
 serde_json = "1"
 toml = "0.7"
 parse-display = "0.8"
-lovely_env_logger = "0.6"
-systemd-journal-logger = "0.7"
 hidg-core = "0.2"
 
-[workspace.dependencies.log]
-version = "0.4"
-features = ["max_level_trace", "release_max_level_off"]
+[workspace.dependencies.tracing]
+version = "0.1"
+features = ["max_level_trace", "release_max_level_info"]
+
+[workspace.dependencies.tracing-subscriber]
+version = "0.3"
+features = ["env-filter"]
+
+[workspace.dependencies.tracing-journald]
+version = "0.3"
+
 [workspace.dependencies.ukvm-core]
 path = "."
 version = "0.1"
@@ -37,10 +45,6 @@ version = "0.1"
 [workspace.dependencies.ukvm-server]
 path = "server"
 version = "0.1"
-
-[workspace.dependencies.clap]
-version = "4"
-features = ["derive"]
 
 [workspace.dependencies.serde]
 version = "1"
@@ -94,3 +98,14 @@ http = []
 web = ["http"]
 hid = ["hidg-core"]
 video = []
+
+[profile.release]
+opt-level = "z"
+#debug = "limited"
+strip = "symbols"
+debug-assertions = false
+overflow-checks = false
+lto = "fat"
+#panic = "abort"
+incremental = false
+codegen-units = 1

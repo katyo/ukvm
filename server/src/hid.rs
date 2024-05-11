@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{log, Result};
 use hidg::{Class, Device, Keyboard, Mouse, StateChange, ValueChange};
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, path::Path};
