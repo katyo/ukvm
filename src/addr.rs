@@ -8,56 +8,61 @@ use crate::DBusAddr;
 #[cfg(feature = "http")]
 use crate::{HttpAddr, HttpBindAddr};
 
-/// Service connection address
-pub type Addr = UniAddr<HttpAddr>;
+macro_rules! addr_impl {
+    ($($atype:ident: $hatype:ty,)*) => {
+        $(
+            #[cfg(any(feature = "http", feature = "dbus"))]
+            /// Unified address
+            #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+            #[serde(tag = "proto", rename_all = "lowercase")]
+            pub enum $atype {
+                #[cfg(feature = "http")]
+                /// HTTP server
+                ///
+                /// http://addr[:port]
+                /// http+unix://path
+                Http($hatype),
 
-/// Service binding address
-pub type BindAddr = UniAddr<HttpBindAddr>;
+                #[cfg(feature = "dbus")]
+                /// DBus service
+                ///
+                /// dbus://system
+                /// dbus://addr[:port]
+                /// dbus+unix://path
+                DBus(DBusAddr),
+            }
 
-#[cfg(any(feature = "http", feature = "dbus"))]
-/// Unified address
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "proto", rename_all = "lowercase")]
-pub enum UniAddr<HttpAddr> {
-    #[cfg(feature = "http")]
-    /// HTTP server
-    ///
-    /// http://addr[:port]
-    /// http+unix://path
-    Http(HttpAddr),
+            impl FromStr for $atype {
+                type Err = String;
 
-    #[cfg(feature = "dbus")]
-    /// DBus service
-    ///
-    /// dbus://system
-    /// dbus://addr[:port]
-    /// dbus+unix://path
-    DBus(DBusAddr),
+                fn from_str(uri: &str) -> Result<Self, Self::Err> {
+                    let (proto, offset) = if let Some((proto, _)) = uri.split_once("://") {
+                        proto
+                            .split_once('+')
+                            .map(|(proto, _)| (proto, proto.len() + 1))
+                            .unwrap_or((proto, proto.len()))
+                    } else {
+                        Err(format!("Invalid binding URI: {}", uri))?
+                    };
+
+                    let uri = &uri[offset..];
+
+                    match proto {
+                        #[cfg(feature = "http")]
+                        "http" => <$hatype>::from_str(uri).map(Self::Http),
+                        #[cfg(feature = "dbus")]
+                        "dbus" => DBusAddr::from_str(uri).map(Self::DBus),
+                        _ => Err(format!("Unknown protocol: {proto}"))?,
+                    }
+                }
+            }
+        )*
+    }
 }
 
-impl<HttpAddr: FromStr<Err = String>> FromStr for UniAddr<HttpAddr> {
-    type Err = String;
-
-    fn from_str(uri: &str) -> Result<Self, Self::Err> {
-        let (proto, offset) = if let Some((proto, _)) = uri.split_once("://") {
-            proto
-                .split_once('+')
-                .map(|(proto, _)| (proto, proto.len() + 1))
-                .unwrap_or((proto, proto.len()))
-        } else {
-            Err(format!("Invalid binding URI: {}", uri))?
-        };
-
-        let uri = &uri[offset..];
-
-        match proto {
-            #[cfg(feature = "http")]
-            "http" => HttpAddr::from_str(uri).map(Self::Http),
-            #[cfg(feature = "dbus")]
-            "dbus" => DBusAddr::from_str(uri).map(Self::DBus),
-            _ => Err(format!("Unknown protocol: {proto}"))?,
-        }
-    }
+addr_impl!{
+    Addr: HttpAddr,
+    BindAddr: HttpBindAddr,
 }
 
 #[cfg(any(feature = "dbus", feature = "http"))]

@@ -93,7 +93,7 @@ features = ["serde"]
 optional = true
 
 [features]
-default = ["dbus", "http", "tls", "hid", "video"]
+#default = ["dbus", "http", "tls", "hid", "video"]
 dbus = ["zbus"]
 http = []
 tls = []
