@@ -1,28 +1,28 @@
 use crate::{log, ButtonId, DBusAddr, GracefulShutdown, LedId, Result, Server};
 use tokio::spawn;
-use zbus::{dbus_interface, Address, ConnectionBuilder};
+use zbus::{interface, Address, ConnectionBuilder};
 
 struct Button {
     id: ButtonId,
     server: Server,
 }
 
-#[dbus_interface(name = "org.ukvm.Button")]
+#[interface(name = "org.ukvm.Button")]
 impl Button {
     /// Button id
-    #[dbus_interface(property)]
+    #[zbus(property)]
     fn id(&self) -> ButtonId {
         self.id
     }
 
     /// Current state
-    #[dbus_interface(property)]
+    #[zbus(property)]
     fn state(&self) -> bool {
         self.server.buttons().get(&self.id).unwrap().state()
     }
 
     /// Change state
-    #[dbus_interface(property)]
+    #[zbus(property)]
     fn set_state(&self, state: bool) -> zbus::Result<()> {
         Ok(self
             .server
@@ -38,16 +38,16 @@ struct Led {
     server: Server,
 }
 
-#[dbus_interface(name = "org.ukvm.Led")]
+#[interface(name = "org.ukvm.Led")]
 impl Led {
     /// LED id
-    #[dbus_interface(property)]
+    #[zbus(property)]
     fn id(&self) -> LedId {
         self.id
     }
 
     /// Current state
-    #[dbus_interface(property)]
+    #[zbus(property)]
     fn state(&self) -> bool {
         self.server.leds().get(&self.id).unwrap().state()
     }

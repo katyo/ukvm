@@ -56,7 +56,7 @@ version = "1"
 features = ["use-std"]
 
 [workspace.dependencies.zbus]
-version = "3"
+version = "4"
 default-features = false
 features = ["tokio"]
 
