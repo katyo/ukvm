@@ -12,7 +12,7 @@ repository = "https://github.com/katyo/ukvm"
 edition = "2021"
 
 [workspace]
-members = ["server"]
+members = ["server", "client"]
 # "iced_ui"]
 
 [workspace.dependencies]
@@ -24,8 +24,10 @@ futures-util = "0.3"
 tokio = "1"
 tokio-stream = "0.1"
 serde_json = "1"
-toml = "0.7"
+toml = "0.8"
 parse-display = "0.8"
+quick-xml = "0.31"
+async-trait = "0.1"
 hidg-core = "0.2"
 
 [workspace.dependencies.tracing]

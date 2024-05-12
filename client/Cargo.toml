@@ -1,0 +1,52 @@
+[package]
+name = "ukvmc"
+description = "Micro network KVM client."
+version = "0.1.0"
+license = "MIT"
+authors = ["K <kayo@illumium.org>"]
+readme = "README.md"
+categories = []
+keywords = ["kvm", "ipkvm", "bmc", "server", "control"]
+homepage = "https://github.com/katyo/ukvm"
+repository = "https://github.com/katyo/ukvm"
+edition = "2021"
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+argp.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+ukvm-core.workspace = true
+
+[dependencies.postcard]
+workspace = true
+optional = true
+
+[dependencies.tracing-subscriber]
+workspace = true
+optional = true
+
+[dependencies.tokio]
+workspace = true
+features = ["macros", "rt-multi-thread", "signal"]
+
+[dependencies.tokio-stream]
+workspace = true
+features = ["net", "sync"]
+
+[dependencies.zbus]
+workspace = true
+optional = true
+
+[dependencies.quick-xml]
+workspace = true
+optional = true
+
+[features]
+default = ["dbus", "stderr"]
+dbus = ["ukvm-core/dbus", "zbus", "quick-xml"]
+http = ["ukvm-core/http"]
+stderr = ["tracing-subscriber"]
