@@ -1,24 +1,10 @@
-use crate::{log, ButtonId, DBusAddr, Error, GracefulShutdown, LedId, Result, Server};
+use crate::{log, ButtonId, DBusAddr, GracefulShutdown, LedId, Result, Server};
 use tokio::spawn;
-use zbus::{dbus_interface, Address, ConnectionBuilder, SignalContext};
+use zbus::{dbus_interface, Address, ConnectionBuilder};
 
 struct Button {
     id: ButtonId,
     server: Server,
-}
-
-impl zbus::DBusError for Error {
-    fn create_reply(&self, msg: &zbus::MessageHeader<'_>) -> zbus::Result<zbus::Message> {
-        zbus::MessageBuilder::error(msg, self.name())?.build(&self.to_string())
-    }
-
-    fn name(&self) -> zbus::names::ErrorName<'_> {
-        zbus::names::ErrorName::from_str_unchecked(self.as_ref())
-    }
-
-    fn description(&self) -> Option<&str> {
-        Some(self.as_ref())
-    }
 }
 
 #[dbus_interface(name = "org.ukvm.Button")]
@@ -30,22 +16,21 @@ impl Button {
     }
 
     /// Current state
+    #[dbus_interface(property)]
     fn state(&self) -> bool {
         self.server.buttons().get(&self.id).unwrap().state()
     }
 
     /// Change state
-    fn set_state(&self, state: bool) -> Result<()> {
-        self.server
+    #[dbus_interface(property)]
+    fn set_state(&self, state: bool) -> zbus::Result<()> {
+        Ok(self
+            .server
             .buttons()
             .get(&self.id)
             .unwrap()
-            .set_state(state)
+            .set_state(state)?)
     }
-
-    /// State changed
-    #[dbus_interface(signal)]
-    async fn state_changed(signal_ctx: &SignalContext<'_>, state: bool) -> zbus::Result<()>;
 }
 
 struct Led {
@@ -62,13 +47,10 @@ impl Led {
     }
 
     /// Current state
+    #[dbus_interface(property)]
     fn state(&self) -> bool {
         self.server.leds().get(&self.id).unwrap().state()
     }
-
-    /// State changed
-    #[dbus_interface(signal)]
-    async fn state_changed(signal_ctx: &SignalContext<'_>, state: bool) -> zbus::Result<()>;
 }
 
 impl Server {
@@ -124,9 +106,9 @@ impl Server {
                 .await?;
             spawn(async move {
                 while watch.changed().await.is_ok() {
-                    let state = *watch.borrow();
-                    let s_ctx = reference.signal_context();
-                    if let Err(error) = Button::state_changed(s_ctx, state).await {
+                    let sigctx = reference.signal_context();
+                    let button = reference.get().await;
+                    if let Err(error) = button.state_changed(sigctx).await {
                         log::error!("Error notifying button state change: {}", error);
                     }
                 }
@@ -141,9 +123,9 @@ impl Server {
                 .await?;
             spawn(async move {
                 while watch.changed().await.is_ok() {
-                    let state = *watch.borrow();
-                    let s_ctx = reference.signal_context();
-                    if let Err(error) = Led::state_changed(s_ctx, state).await {
+                    let led = reference.get().await;
+                    let sigctx = reference.signal_context();
+                    if let Err(error) = led.state_changed(sigctx).await {
                         log::error!("Error notifying LED state change: {}", error);
                     }
                 }
