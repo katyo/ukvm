@@ -1,6 +1,5 @@
 use crate::{
     addr::socket_addr_parse,
-    hid::{Button, Key, KeyboardState, Led, MouseState},
     ButtonId, LedId,
 };
 use core::str::FromStr;
@@ -10,6 +9,9 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
+
+#[cfg(feature = "hid")]
+use crate::hid::{Button, Key, KeyboardState, Led, MouseState};
 
 #[cfg(feature = "video")]
 use std::sync::Arc;
