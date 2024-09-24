@@ -7,7 +7,8 @@ use tokio::{
     signal::unix::{signal, SignalKind},
 };
 
-#[tokio::main]
+#[cfg_attr(not(feature = "multi-thread"), tokio::main(flavor = "current_thread"))]
+#[cfg_attr(feature = "multi-thread", tokio::main)]
 async fn main() -> Result<()> {
     let args = Args::from_cmdline();
 

@@ -3,7 +3,8 @@ mod args;
 use args::{Args, Action, ButtonArgs};
 use ukvmc::{Result, Client, Addr, ButtonId};
 
-#[tokio::main]
+#[cfg_attr(not(feature = "multi-thread"), tokio::main(flavor = "current_thread"))]
+#[cfg_attr(feature = "multi-thread", tokio::main)]
 async fn main() -> Result<()> {
     let args = Args::new();
 

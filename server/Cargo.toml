@@ -41,7 +41,7 @@ features = ["sink"]
 
 [dependencies.tokio]
 workspace = true
-features = ["macros", "rt-multi-thread", "signal"]
+features = ["macros", "rt", "signal"]
 
 [dependencies.tokio-stream]
 workspace = true
@@ -72,6 +72,7 @@ optional = true
 
 [features]
 default = ["postcard", "http", "tls", "dbus", "stderr", "journal", "hid", "video"] #, "web"]
+multi-thread = ["tokio/rt-multi-thread"]
 dbus = ["ukvm-core/dbus", "zbus"]
 http = ["ukvm-core/http", "warp"]
 comp = ["warp/compression"]

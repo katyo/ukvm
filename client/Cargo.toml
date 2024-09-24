@@ -31,7 +31,7 @@ optional = true
 
 [dependencies.tokio]
 workspace = true
-features = ["macros", "rt-multi-thread", "signal"]
+features = ["macros", "rt", "signal"]
 
 [dependencies.tokio-stream]
 workspace = true
@@ -47,6 +47,7 @@ optional = true
 
 [features]
 default = ["dbus", "http", "stderr"]
+multi-thread = ["tokio/rt-multi-thread"]
 dbus = ["ukvm-core/dbus", "zbus", "quick-xml"]
 http = ["ukvm-core/http"]
 stderr = ["tracing-subscriber"]
