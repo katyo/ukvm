@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
                 };
                 print!(" {id}:{state}");
             }
-            println!("");
+            println!();
             print!("LEDs:");
             for id in client.leds() {
                 let state = if client.led_state(id)? {
@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
                 };
                 print!(" {id}:{state}");
             }
-            println!("");
+            println!();
         }
         Action::Button(ButtonArgs { press, release, delay, button }) => {
             let id = button.parse::<ButtonId>().map_err(|_| format!("Unknown button {button}"))?;

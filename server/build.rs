@@ -108,7 +108,7 @@ fn main() {
                 if count > 0 {
                     writeln!(src, ")").unwrap();
                 } else {
-                    writeln!(src, "").unwrap();
+                    writeln!(src).unwrap();
                 }
 
                 count += 1;

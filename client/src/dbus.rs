@@ -111,7 +111,7 @@ impl DBusClient {
 
         let path = path.as_ref();
 
-        let proxy = Proxy::new(&connection,
+        let proxy = Proxy::new(connection,
                                destination.as_ref(),
                                path,
                                "org.freedesktop.DBus.Introspectable").await?;

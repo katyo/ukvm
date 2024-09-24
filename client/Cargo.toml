@@ -46,7 +46,7 @@ workspace = true
 optional = true
 
 [features]
-default = ["dbus", "stderr"]
+default = ["dbus", "http", "stderr"]
 dbus = ["ukvm-core/dbus", "zbus", "quick-xml"]
 http = ["ukvm-core/http"]
 stderr = ["tracing-subscriber"]

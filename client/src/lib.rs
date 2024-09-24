@@ -54,7 +54,7 @@ impl Client {
             #[cfg(feature = "dbus")]
             Addr::DBus(addr) => Box::new(DBusClient::open(addr).await?) as Box<dyn GenericClient>,
             #[cfg(feature = "http")]
-            Addr::Http(addr) => todo!(),
+            Addr::Http(_addr) => todo!(),
         };
 
         Ok(Self { inner })
